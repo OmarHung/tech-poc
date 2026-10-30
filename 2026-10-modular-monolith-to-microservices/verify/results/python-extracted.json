@@ -1,0 +1,43 @@
+{
+  "lang": "python",
+  "phase": "extracted",
+  "passed": 36,
+  "failures": [],
+  "latency": {
+    "extracted, via monolith": {
+      "get_product": {
+        "n": 1000,
+        "p50_ms": 1.397,
+        "p95_ms": 1.921,
+        "p99_ms": 2.154,
+        "errors": 0
+      },
+      "place_order": {
+        "n": 1000,
+        "p50_ms": 1.463,
+        "p95_ms": 1.924,
+        "p99_ms": 2.28,
+        "errors": 0
+      }
+    },
+    "extracted, direct route": {
+      "get_product": {
+        "n": 1000,
+        "p50_ms": 0.927,
+        "p95_ms": 1.306,
+        "p99_ms": 1.466,
+        "errors": 0
+      }
+    }
+  },
+  "switch": {
+    "requests": 2626,
+    "failures": 0,
+    "toggles": 15,
+    "served_by": {
+      "monolith": 570,
+      "catalog-service": 756
+    },
+    "failure_samples": []
+  }
+}

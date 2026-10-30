@@ -1,0 +1,43 @@
+{
+  "lang": "rust",
+  "phase": "extracted",
+  "passed": 36,
+  "failures": [],
+  "latency": {
+    "extracted, via monolith": {
+      "get_product": {
+        "n": 1000,
+        "p50_ms": 0.126,
+        "p95_ms": 0.171,
+        "p99_ms": 0.211,
+        "errors": 0
+      },
+      "place_order": {
+        "n": 1000,
+        "p50_ms": 0.141,
+        "p95_ms": 0.197,
+        "p99_ms": 0.324,
+        "errors": 0
+      }
+    },
+    "extracted, direct route": {
+      "get_product": {
+        "n": 1000,
+        "p50_ms": 0.093,
+        "p95_ms": 0.134,
+        "p99_ms": 0.172,
+        "errors": 0
+      }
+    }
+  },
+  "switch": {
+    "requests": 42796,
+    "failures": 0,
+    "toggles": 15,
+    "served_by": {
+      "monolith": 11682,
+      "catalog-service": 14720
+    },
+    "failure_samples": []
+  }
+}

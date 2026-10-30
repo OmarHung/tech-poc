@@ -1,0 +1,24 @@
+{
+  "lang": "python",
+  "phase": "monolith",
+  "passed": 28,
+  "failures": [],
+  "latency": {
+    "monolith (in-process)": {
+      "get_product": {
+        "n": 1000,
+        "p50_ms": 0.659,
+        "p95_ms": 0.969,
+        "p99_ms": 1.15,
+        "errors": 0
+      },
+      "place_order": {
+        "n": 1000,
+        "p50_ms": 0.653,
+        "p95_ms": 0.774,
+        "p99_ms": 0.94,
+        "errors": 0
+      }
+    }
+  }
+}

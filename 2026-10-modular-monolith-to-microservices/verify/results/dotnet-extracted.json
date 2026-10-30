@@ -1,0 +1,43 @@
+{
+  "lang": "dotnet",
+  "phase": "extracted",
+  "passed": 36,
+  "failures": [],
+  "latency": {
+    "extracted, via monolith": {
+      "get_product": {
+        "n": 1000,
+        "p50_ms": 0.254,
+        "p95_ms": 0.336,
+        "p99_ms": 0.423,
+        "errors": 0
+      },
+      "place_order": {
+        "n": 1000,
+        "p50_ms": 0.24,
+        "p95_ms": 0.318,
+        "p99_ms": 0.396,
+        "errors": 0
+      }
+    },
+    "extracted, direct route": {
+      "get_product": {
+        "n": 1000,
+        "p50_ms": 0.141,
+        "p95_ms": 0.174,
+        "p99_ms": 0.204,
+        "errors": 0
+      }
+    }
+  },
+  "switch": {
+    "requests": 34633,
+    "failures": 0,
+    "toggles": 15,
+    "served_by": {
+      "monolith": 9052,
+      "catalog-service": 11967
+    },
+    "failure_samples": []
+  }
+}

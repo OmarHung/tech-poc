@@ -1,0 +1,16 @@
+# OS / editor files
+.DS_Store
+
+# build output
+rust/target/
+dotnet/**/bin/
+dotnet/**/obj/
+
+# python
+python/.venv/
+__pycache__/
+.pytest_cache/
+.coverage
+
+# verify run logs (results/ is kept as evidence for the README numbers)
+verify/logs/

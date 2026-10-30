@@ -1,0 +1,24 @@
+{
+  "lang": "rust",
+  "phase": "monolith",
+  "passed": 28,
+  "failures": [],
+  "latency": {
+    "monolith (in-process)": {
+      "get_product": {
+        "n": 1000,
+        "p50_ms": 0.091,
+        "p95_ms": 0.13,
+        "p99_ms": 0.195,
+        "errors": 0
+      },
+      "place_order": {
+        "n": 1000,
+        "p50_ms": 0.104,
+        "p95_ms": 0.15,
+        "p99_ms": 0.183,
+        "errors": 0
+      }
+    }
+  }
+}

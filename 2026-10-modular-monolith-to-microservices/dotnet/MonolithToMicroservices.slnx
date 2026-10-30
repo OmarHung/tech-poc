@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CatalogService/CatalogService.csproj" />
+    <Project Path="src/Gateway/Gateway.csproj" />
+    <Project Path="src/Monolith/Monolith.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CatalogService.Tests/CatalogService.Tests.csproj" />
+    <Project Path="tests/Gateway.Tests/Gateway.Tests.csproj" />
+    <Project Path="tests/Monolith.Tests/Monolith.Tests.csproj" />
+  </Folder>
+</Solution>

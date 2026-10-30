@@ -1,0 +1,6 @@
+{
+  "lang": "dotnet",
+  "phase": "catalog-down",
+  "passed": 6,
+  "failures": []
+}

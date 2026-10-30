@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rust 版運作說明｜模組化單體轉微服務</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --fg: #1d232b; --muted: #5d6773; --line: #d8dde3; --card: #ffffff; --code-bg: #f0f2f5;
+    --flow: #2563eb; --flow-ink: #ffffff; --fail: #d64545; --idle: #b9c0c8;
+    --gw: #6d5bd0; --mono: #0f8b8d; --svc: #b86e0b; --warn-bg: #fff4dc; --warn-fg: #8a5300;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a; --fg: #e4e7eb; --muted: #9aa4b0; --line: #2d333b; --card: #1a1f26; --code-bg: #20262e;
+      --flow: #6ea0ff; --flow-ink: #0b1220; --fail: #ff7272; --idle: #4a525c;
+      --gw: #a596ff; --mono: #4cc7c9; --svc: #f0a948; --warn-bg: #3a2c12; --warn-fg: #f5c46b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); line-height: 1.7;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 1.9rem; line-height: 1.3; margin: 0 0 8px; }
+  h2 { font-size: 1.35rem; margin: 56px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 20px 0 8px; }
+  p { margin: 8px 0; }
+  a { color: var(--flow); }
+  .lead { color: var(--muted); font-size: 1.05rem; margin: 0; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 0; }
+  nav.toc a { text-decoration: none; font-size: .9rem; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--fg); background: var(--card); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .86em; }
+  :not(pre) > code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; line-height: 1.55; margin: 10px 0; }
+  pre .c { color: var(--muted); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 16px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; border-top: 4px solid var(--c, var(--line)); }
+  .card h3 { margin: 0 0 4px; }
+  .card .port { color: var(--muted); font-size: .85rem; }
+  .card p { font-size: .93rem; }
+  .gw { --c: var(--gw); } .mono { --c: var(--mono); } .svc { --c: var(--svc); }
+  .tree { background: var(--card); border: 1px solid var(--line); }
+  .tree .hl { background: var(--warn-bg); color: var(--warn-fg); border-radius: 3px; }
+  .note { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; padding: 10px 14px; font-size: .93rem; margin: 12px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: .92rem; background: var(--card); }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+  th { background: var(--code-bg); font-weight: 600; }
+
+  /* interactive flow */
+  .phase-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .phase-buttons button {
+    font: inherit; font-size: .92rem; cursor: pointer; padding: 6px 14px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--card); color: var(--fg);
+  }
+  .phase-buttons button:hover { border-color: var(--flow); }
+  .phase-buttons button:focus-visible { outline: 3px solid var(--flow); outline-offset: 2px; }
+  .phase-buttons button[aria-pressed="true"] { background: var(--flow); border-color: var(--flow); color: var(--flow-ink); font-weight: 600; }
+  .flow-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  #flow { width: 100%; height: auto; display: block; }
+  #flow text { fill: var(--fg); font-size: 13px; text-anchor: middle; }
+  #flow text.small { font-size: 11px; fill: var(--muted); }
+  #flow text.badge { fill: var(--warn-fg); font-size: 11.5px; font-weight: 600; text-anchor: end; }
+  #flow text.left { text-anchor: start; font-weight: 600; }
+  #flow .node rect { fill: var(--card); stroke: var(--c); stroke-width: 2; rx: 8; }
+  #flow .node.gw { --c: var(--gw); } #flow .node.mono { --c: var(--mono); } #flow .node.svc { --c: var(--svc); } #flow .node.plain { --c: var(--idle); }
+  #flow .node.migrated > rect { stroke-dasharray: 6 4; fill: var(--warn-bg); }
+  #flow .node.dim { opacity: .35; }
+  #flow .node.down rect { stroke: var(--fail); }
+  #flow .down-label { display: none; fill: var(--fail); font-weight: 700; }
+  #flow .node.down .down-label { display: inline; }
+  #flow path.edge { fill: none; stroke: var(--idle); stroke-width: 2; opacity: .45; marker-end: url(#arrow-idle); }
+  #flow path.edge.on { stroke: var(--flow); opacity: 1; stroke-width: 2.6; stroke-dasharray: 7 5; animation: dash 1s linear infinite; marker-end: url(#arrow-on); }
+  #flow path.edge.fail { stroke: var(--fail); opacity: 1; stroke-width: 2.6; stroke-dasharray: 3 5; marker-end: url(#arrow-fail); }
+  @keyframes dash { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { #flow path.edge.on { animation: none; } }
+  .panel { margin-top: 12px; }
+  .panel dl { display: grid; grid-template-columns: 7.5em 1fr; gap: 6px 14px; margin: 8px 0; }
+  .panel dt { color: var(--muted); }
+  .panel dd { margin: 0; }
+
+  /* step timeline */
+  ol.steps { list-style: none; padding: 0; margin: 16px 0; counter-reset: step; }
+  ol.steps > li { position: relative; padding: 0 0 18px 46px; counter-increment: step; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--c, var(--flow)); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: .9rem;
+  }
+  ol.steps > li::after { content: ""; position: absolute; left: 14px; top: 32px; bottom: 2px; width: 2px; background: var(--line); }
+  ol.steps > li:last-child::after { display: none; }
+  ol.steps .where { font-size: .85rem; color: var(--muted); }
+  ol.steps .who { font-weight: 600; }
+  details { margin: 6px 0; }
+  details summary { cursor: pointer; color: var(--flow); font-size: .9rem; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  footer { margin-top: 64px; color: var(--muted); font-size: .88rem; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>模組化單體轉微服務｜Rust 版運作說明</h1>
+  <p class="lead">這頁說明 <code>rust/</code> 裡的程式怎麼運作：有哪幾個程式、一個請求怎麼流動、拆分前後差在哪裡。框架是 axum 0.8 ＋ reqwest 0.13 ＋ tokio。</p>
+  <nav class="toc" aria-label="目錄">
+    <a href="#overview">1. 全貌</a>
+    <a href="#flow-section">2. 互動流程圖</a>
+    <a href="#journey">3. 一個下單請求的旅程</a>
+    <a href="#startup">4. 啟動時發生什麼</a>
+    <a href="#design">5. 關鍵設計</a>
+    <a href="#run">6. 怎麼跑</a>
+  </nav>
+</header>
+
+<section id="overview">
+  <h2>1. 全貌：三個程式</h2>
+  <p>這是一個小型電商：<strong>catalog</strong> 管商品和庫存，<strong>orders</strong> 管訂單。原本兩個模組都在同一個程式（模組化單體）裡，這次把 catalog 拆成獨立的微服務。</p>
+  <div class="cards">
+    <div class="card gw">
+      <h3>gateway</h3>
+      <div class="port">127.0.0.1:8080 ・ <code>gateway/</code></div>
+      <p>所有請求的入口（Strangler Fig 門面）。<code>/products</code> 開頭的請求依目前設定送給 monolith 或 catalog-service，其他一律送 monolith。設定可以在執行中切換。</p>
+    </div>
+    <div class="card mono">
+      <h3>monolith</h3>
+      <div class="port">127.0.0.1:8081 ・ <code>monolith/</code></div>
+      <p>原本的模組化單體。orders 模組留在這裡；catalog 模組⚠已轉微服務，但保留在原位，用來對照和回滾。</p>
+    </div>
+    <div class="card svc">
+      <h3>catalog-service</h3>
+      <div class="port">127.0.0.1:8082 ・ <code>catalog-service/</code></div>
+      <p>從單體拆出來的微服務。裡面的 catalog 模組跟單體那份是同一套程式碼，現在由它負責商品資料。</p>
+    </div>
+  </div>
+
+  <h3>資料夾結構</h3>
+<pre class="tree">rust/
+├── Cargo.toml                    workspace：monolith、catalog-service、gateway
+├── run.sh                        ./run.sh build | test | monolith | catalog-service | gateway
+├── monolith/src/
+│   ├── main.rs                   啟動：讀環境變數，決定 catalog 用哪種實作
+│   ├── lib.rs                    build_app：把 health、catalog、orders 的路由組起來
+│   ├── config.rs                 CATALOG_MODE、CATALOG_URL、PORT
+│   └── modules/
+│       ├── orders.rs             orders 模組：下單、查訂單（留在單體）
+<span class="hl">│       └── catalog/              catalog 模組 ⚠ 已轉微服務（保留原位，見資料夾內 README.md）</span>
+│           ├── port.rs           CatalogPort：orders 依賴的介面
+│           ├── remote.rs         HttpCatalogClient：拆分時新增，透過 HTTP 呼叫 catalog-service
+│           ├── routes.rs         /products 路由
+│           ├── store.rs          InMemoryCatalog：原本的實作（只剩回滾用途）
+│           └── product.rs、error.rs、validation.rs
+├── catalog-service/src/
+│   ├── main.rs                   啟動：載入商品資料，掛上 catalog 路由
+│   └── catalog/                  搬過來的 catalog 模組（現役）：跟單體那份相同，少了 remote.rs
+└── gateway/src/
+    ├── main.rs                   啟動：讀上游網址和初始路由
+    ├── lib.rs                    proxy：轉發請求；/admin/routes：切換路由
+    └── routing.rs                resolve：決定這個路徑要送去哪裡</pre>
+</section>
+
+<section id="flow-section">
+  <h2>2. 互動流程圖：四個階段</h2>
+  <p>點下面的按鈕切換階段，圖上藍色虛線是請求實際走的路徑，紅色是失敗的路徑，半透明的是這個階段沒用到的部分。</p>
+  <div class="phase-buttons" role="group" aria-label="選擇階段">
+    <button type="button" data-phase-btn="p1" aria-pressed="true">階段一：模組化單體</button>
+    <button type="button" data-phase-btn="p2a" aria-pressed="false">階段二：拆出 catalog（經由單體）</button>
+    <button type="button" data-phase-btn="p2b" aria-pressed="false">階段二：路由切到服務</button>
+    <button type="button" data-phase-btn="p3" aria-pressed="false">階段三：catalog-service 故障</button>
+  </div>
+
+  <div class="flow-wrap">
+    <svg id="flow" viewBox="0 0 960 400" role="img" aria-labelledby="flow-title flow-desc">
+      <title id="flow-title">請求流程圖</title>
+      <desc id="flow-desc">client 經過 gateway 進入 monolith 或 catalog-service。monolith 內的 orders 模組透過 CatalogPort 介面使用 catalog，實作可以是同程序內的 InMemoryCatalog，或透過 HTTP 呼叫 catalog-service 的 HttpCatalogClient。</desc>
+      <defs>
+        <marker id="arrow-idle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--idle)"/></marker>
+        <marker id="arrow-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--flow)"/></marker>
+        <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--fail)"/></marker>
+      </defs>
+
+      <g class="node plain" data-node="client"><rect x="16" y="170" width="104" height="60"/><text x="68" y="205">client</text></g>
+      <g class="node gw" data-node="gw">
+        <rect x="170" y="150" width="150" height="100"/>
+        <text x="245" y="185">gateway</text><text class="small" x="245" y="205">:8080</text><text class="small" x="245" y="226">Strangler Fig 門面</text>
+      </g>
+      <g class="node mono" data-node="mono">
+        <rect x="400" y="20" width="300" height="356"/>
+        <text x="550" y="46">monolith :8081 ・ 模組化單體</text>
+        <g class="node mono" data-node="orders">
+          <rect x="424" y="64" width="252" height="98"/>
+          <text x="550" y="100">orders 模組</text><text class="small" x="550" y="122">留在單體</text><text class="small" x="550" y="144">modules/orders.rs</text>
+        </g>
+        <g class="node migrated" data-node="catalog" style="--c: var(--warn-fg)">
+          <rect x="424" y="190" width="252" height="170"/>
+          <text class="left" x="440" y="212">catalog 模組</text><text class="badge" x="664" y="212">⚠ 已轉微服務</text>
+          <g class="node plain" data-node="port"><rect x="440" y="222" width="220" height="26"/><text class="small" x="550" y="240">routes ＋ CatalogPort（介面）</text></g>
+          <g class="node plain" data-node="store"><rect x="440" y="274" width="104" height="72"/><text class="small" x="492" y="304">InMemoryCatalog</text><text class="small" x="492" y="324">原本的實作</text></g>
+          <g class="node plain" data-node="http"><rect x="556" y="274" width="104" height="72"/><text class="small" x="608" y="304">HttpCatalogClient</text><text class="small" x="608" y="324">拆分時新增</text></g>
+        </g>
+      </g>
+      <g class="node svc" data-node="svc">
+        <rect x="790" y="230" width="150" height="110"/>
+        <text x="865" y="262">catalog-service</text><text class="small" x="865" y="282">:8082</text><text class="small" x="865" y="304">catalog 模組（現役）</text>
+        <text class="down-label" x="865" y="328">✕ 停機</text>
+      </g>
+
+      <!-- edges are drawn after the boxes so the box fills never hide them -->
+      <path class="edge" data-edge="client" d="M120 200 H168"/>
+      <path class="edge" data-edge="gw-orders" d="M320 180 C 370 180, 370 113, 422 113"/>
+      <path class="edge" data-edge="gw-mcat" d="M320 220 C 370 220, 380 235, 438 235"/>
+      <path class="edge" data-edge="gw-svc" d="M245 250 V390 H865 V342"/>
+      <path class="edge" data-edge="orders-port" d="M550 162 V220"/>
+      <path class="edge" data-edge="port-store" d="M492 248 V272"/>
+      <path class="edge" data-edge="port-http" d="M608 248 V272"/>
+      <path class="edge" data-edge="http-svc" d="M660 310 H788"/>
+    </svg>
+
+    <div class="panel" data-panel="p1">
+      <h3>階段一：模組化單體</h3>
+      <dl>
+        <dt>設定</dt><dd>monolith <code>CATALOG_MODE=inprocess</code>；gateway <code>CATALOG_ROUTE=monolith</code></dd>
+        <dt>查商品</dt><dd>gateway → monolith 的 catalog 路由 → <code>InMemoryCatalog::get()</code>。全部在同一個程序裡，是一般的函式呼叫。</dd>
+        <dt>下單</dt><dd>gateway → orders 模組 → <code>CatalogPort::reserve()</code> → <code>InMemoryCatalog::reserve()</code> 扣庫存 → 建立訂單。</dd>
+        <dt>誰回應</dt><dd><code>X-Served-By: monolith</code>。catalog-service 已經部署，但沒有任何流量。</dd>
+        <dt>實測 p50</dt><dd>查商品 0.091 ms、下單 0.104 ms</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="p2a" hidden>
+      <h3>階段二：拆出 catalog，請求仍經由單體</h3>
+      <dl>
+        <dt>設定</dt><dd>monolith 改成 <code>CATALOG_MODE=remote</code> 重啟（gateway 不用動）</dd>
+        <dt>查商品</dt><dd>gateway → monolith 的 catalog 路由 → <code>HttpCatalogClient::get()</code> → HTTP → catalog-service。路由程式碼沒變，只是介面背後換了實作。</dd>
+        <dt>下單</dt><dd>orders 模組照樣呼叫 <code>CatalogPort::reserve()</code>，但現在是 HTTP 呼叫 catalog-service 扣庫存。orders 的程式一行都沒改。</dd>
+        <dt>重點</dt><dd>單體不再持有商品資料，資料只有 catalog-service 那一份，兩邊看到的庫存一定一致。</dd>
+        <dt>實測 p50</dt><dd>查商品 0.126 ms、下單 0.141 ms（每多一跳約 +0.04 ms）</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="p2b" hidden>
+      <h3>階段二：gateway 把 /products 直接切給 catalog-service</h3>
+      <dl>
+        <dt>設定</dt><dd><code>PUT /admin/routes {"catalog":"service"}</code>，執行中切換，不用重啟</dd>
+        <dt>查商品</dt><dd>gateway 直接送 catalog-service，不經過單體，少一跳。<code>X-Served-By: catalog-service</code>。</dd>
+        <dt>下單</dt><dd>不受路由影響，還是 gateway → orders → HTTP → catalog-service。</dd>
+        <dt>回滾</dt><dd>再呼叫一次 <code>{"catalog":"monolith"}</code> 就切回去，立即生效。負載下來回切 15 次，42,796 個請求 0 失敗。</dd>
+        <dt>實測 p50</dt><dd>查商品 0.093 ms（跟拆分前差不多）</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="p3" hidden>
+      <h3>階段三：catalog-service 故障</h3>
+      <dl>
+        <dt>狀況</dt><dd>catalog-service 停機。這是拆分之後才有的新故障點。</dd>
+        <dt>查商品</dt><dd>不管路由指向哪邊都回 502：直連時 gateway 回 <code>upstream unavailable</code>，經單體時 monolith 回 <code>catalog unavailable</code>。</dd>
+        <dt>下單</dt><dd>orders 呼叫 catalog-service 失敗，回 502 <code>catalog unavailable</code>。</dd>
+        <dt>仍然正常</dt><dd>查既有訂單（<code>GET /orders/1</code>）還是 200，因為訂單建立時已經存了商品名稱和價格的快照，不需要再問 catalog。</dd>
+        <dt>錯誤細節</dt><dd>客戶端只看到一句話；連線失敗的細節（網址、原因）只用 <code>eprintln!</code> 寫進伺服器 log。</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section id="journey">
+  <h2>3. 一個下單請求的完整旅程</h2>
+  <p>以階段二（<code>CATALOG_MODE=remote</code>）的 <code>POST /orders {"productId":1,"quantity":2}</code> 為例，從進門到回應經過這些程式碼：</p>
+  <ol class="steps">
+    <li style="--c: var(--gw)">
+      <div class="who">gateway 收到請求，決定送去哪裡</div>
+      <div class="where"><code>gateway/src/lib.rs</code> 的 <code>proxy()</code>、<code>gateway/src/routing.rs</code> 的 <code>resolve()</code></div>
+      <p><code>/orders</code> 不是 catalog 路徑，所以一律送 monolith。轉發時會拿掉 <code>Connection</code>、<code>Host</code> 這類只屬於單一連線的標頭。</p>
+    </li>
+    <li style="--c: var(--mono)">
+      <div class="who">monolith 解析 JSON</div>
+      <div class="where"><code>monolith/src/modules/orders.rs</code> 的 <code>create_order()</code></div>
+      <p>axum 把 body 解析成 <code>CreateOrderRequest</code>。JSON 格式錯、欄位型別錯（例如 <code>"quantity":"2"</code>）、少欄位，都會在這裡變成 400。</p>
+    </li>
+    <li style="--c: var(--mono)">
+      <div class="who">orders 模組驗證輸入，再透過介面扣庫存</div>
+      <div class="where"><code>monolith/src/modules/orders.rs</code> 的 <code>OrderService::place()</code></div>
+      <p>先在本地驗證（數量要在 1–100、商品編號要是正整數），不合格就直接回 400，不會浪費一次網路呼叫。接著呼叫 <code>self.catalog.reserve()</code>，它<strong>只知道 <code>CatalogPort</code> 這個介面</strong>，不知道背後是本地還是遠端。</p>
+<pre>pub async fn place(&amp;self, product_id: u64, quantity: u64) -&gt; Result&lt;Order, OrderError&gt; {
+    validate_id(product_id, "productId")?;
+    validate_quantity(quantity)?;
+    let product = self.catalog.reserve(product_id, quantity).await?;
+    let order = Order {
+        id: self.next_id.fetch_add(1, Ordering::Relaxed),
+        product_id,
+        product_name: product.name,
+        unit_price: product.price,
+        quantity,
+        total: product.price * quantity,
+    };
+    self.orders
+        .write()
+        .expect(POISONED)
+        .insert(order.id, order.clone());
+    Ok(order)
+}</pre>
+    </li>
+    <li style="--c: var(--mono)">
+      <div class="who">介面背後是 HTTP client，送出 HTTP 請求</div>
+      <div class="where"><code>monolith/src/modules/catalog/remote.rs</code> 的 <code>HttpCatalogClient::reserve()</code></div>
+      <p>送出 <code>POST http://127.0.0.1:8082/products/1/reserve {"quantity":2}</code>，逾時 2 秒。如果是階段一（<code>inprocess</code>），這一步換成直接呼叫 <code>InMemoryCatalog::reserve()</code>，接著跳到第 5 步的邏輯，只是在同一個程序裡執行。</p>
+    </li>
+    <li style="--c: var(--svc)">
+      <div class="who">catalog-service 扣庫存</div>
+      <div class="where"><code>catalog-service/src/catalog/routes.rs</code> 的 <code>reserve_product()</code> → <code>store.rs</code> 的 <code>InMemoryCatalog::reserve()</code></div>
+      <p>在寫鎖裡「檢查庫存 → 建立一個新的 Product 取代舊的」，所以很多人同時下單也不會超賣（有測試：50 個並行請求搶 10 件，剛好 10 個成功）。舊的 Product 物件不會被修改。</p>
+<pre>async fn reserve(&amp;self, id: u64, quantity: u64) -&gt; Result&lt;Product, CatalogError&gt; {
+    validate_quantity(quantity)?;
+    let mut products = self.products.write().expect(POISONED);
+    let current = products
+        .get(&amp;id)
+        .ok_or_else(|| CatalogError::product_not_found(id))?;
+    if current.stock &lt; quantity {
+        return Err(CatalogError::insufficient_stock(id, quantity, current.stock));
+    }
+    let updated = Product {
+        stock: current.stock - quantity,
+        ..current.clone()
+    };
+    products.insert(id, updated.clone());
+    Ok(updated)
+}</pre>
+    </li>
+    <li style="--c: var(--mono)">
+      <div class="who">monolith 把 HTTP 回應還原成原本的結果</div>
+      <div class="where"><code>monolith/src/modules/catalog/remote.rs</code> 的 <code>decode()</code></div>
+      <p>成功就解析成 <code>Product</code>；400、404、409 還原成跟本地實作一模一樣的 <code>CatalogError</code>，所以 orders 分不出差別。連不上或其他錯誤一律變成「catalog unavailable」（502），細節只寫 log。</p>
+      <details><summary>看 decode() 的程式碼</summary>
+<pre>async fn decode&lt;T: DeserializeOwned&gt;(
+    sent: Result&lt;reqwest::Response, reqwest::Error&gt;,
+) -&gt; Result&lt;T, CatalogError&gt; {
+    let response = sent.map_err(unavailable)?;
+    let status = response.status();
+    if status.is_success() {
+        return response.json::&lt;T&gt;().await.map_err(unavailable);
+    }
+    let message = match response.json::&lt;ErrorBody&gt;().await {
+        Ok(body) =&gt; body.error,
+        Err(_) =&gt; format!("catalog-service returned {status}"),
+    };
+    Err(match status {
+        StatusCode::BAD_REQUEST =&gt; CatalogError::InvalidInput(message),
+        StatusCode::NOT_FOUND =&gt; CatalogError::NotFound(message),
+        StatusCode::CONFLICT =&gt; CatalogError::InsufficientStock(message),
+        _ =&gt; {
+            eprintln!("catalog-service error {status}: {message}");
+            CatalogError::Unavailable("catalog unavailable".into())
+        }
+    })
+}</pre>
+      </details>
+    </li>
+    <li style="--c: var(--mono)">
+      <div class="who">建立訂單，回 201</div>
+      <div class="where"><code>OrderService::place()</code>（第 3 步那段程式的後半）</div>
+      <p>訂單會<strong>複製</strong>商品名稱和單價（快照），之後 catalog 改價或停機都不影響已成立的訂單。回應加上 <code>X-Served-By: monolith</code>（<code>lib.rs</code> 的 <code>served_by</code> layer）。</p>
+    </li>
+    <li style="--c: var(--gw)">
+      <div class="who">gateway 把回應原樣轉回 client</div>
+      <div class="where"><code>gateway/src/lib.rs</code> 的 <code>relay()</code></div>
+      <p>狀態碼、標頭（含 <code>X-Served-By</code>）和內容照原樣傳回。</p>
+    </li>
+  </ol>
+
+  <h3>每種錯誤在哪裡被擋下</h3>
+  <table>
+    <thead><tr><th>狀況</th><th>在哪裡被擋</th><th>回應</th></tr></thead>
+    <tbody>
+      <tr><td>JSON 格式錯、型別錯、少欄位</td><td>第 2 步 <code>create_order()</code>（axum 的 <code>JsonRejection</code>）</td><td>400</td></tr>
+      <tr><td>數量不在 1–100、商品編號不是正整數</td><td>第 3 步 <code>validate_quantity()</code>、<code>validate_id()</code></td><td>400</td></tr>
+      <tr><td>商品不存在</td><td>第 5 步回 404 → 第 6 步還原成 <code>NotFound</code></td><td>404</td></tr>
+      <tr><td>庫存不足</td><td>第 5 步回 409 → 第 6 步還原成 <code>InsufficientStock</code></td><td>409</td></tr>
+      <tr><td>catalog-service 連不上、逾時</td><td>第 6 步 <code>unavailable()</code></td><td>502 <code>catalog unavailable</code></td></tr>
+      <tr><td>gateway 連不到 monolith</td><td>第 1 步 <code>proxy()</code></td><td>502 <code>upstream unavailable</code></td></tr>
+    </tbody>
+  </table>
+  <p class="note">還沒處理的情況：第 5 步扣庫存成功，但回應在第 6 步之前逾時，monolith 會回 502、不建立訂單，可是庫存已經被扣了。正式上線前要補冪等鍵和補償機制（Saga / Outbox）。</p>
+</section>
+
+<section id="startup">
+  <h2>4. 啟動時發生什麼</h2>
+  <div class="cols">
+    <div class="card gw">
+      <h3>gateway</h3>
+      <p><code>gateway/src/main.rs</code>：讀 <code>PORT</code>、<code>MONOLITH_URL</code>、<code>CATALOG_URL</code>、<code>CATALOG_ROUTE</code> → <code>build_app()</code> 建立 HTTP client（逾時 5 秒、不跟隨轉址）和路由表 → 綁定 127.0.0.1:8080。</p>
+    </div>
+    <div class="card mono">
+      <h3>monolith</h3>
+      <p><code>monolith/src/main.rs</code>：讀設定（<code>CATALOG_MODE</code> 打錯會直接啟動失敗）→ <strong>依模式決定 catalog 用哪個實作</strong> → <code>build_app()</code> 組合 health、catalog、orders 路由 → 綁定 127.0.0.1:8081。</p>
+    </div>
+    <div class="card svc">
+      <h3>catalog-service</h3>
+      <p><code>catalog-service/src/main.rs</code>：讀 <code>PORT</code> → 載入三筆種子商品 → 掛上 catalog 路由和 health → 綁定 127.0.0.1:8082。</p>
+    </div>
+  </div>
+  <p>整個遷移的開關就在 monolith 的 <code>main.rs</code> 這幾行：同一個 <code>CatalogPort</code>，依環境變數換成不同實作。</p>
+<pre>let config = Config::from_env()?;
+let catalog: SharedCatalog = match config.catalog_mode {
+    CatalogMode::InProcess =&gt; Arc::new(InMemoryCatalog::seeded()),
+    CatalogMode::Remote =&gt; Arc::new(HttpCatalogClient::new(&amp;config.catalog_url)?),
+};
+<span class="c">// ……綁定 port……</span>
+axum::serve(listener, build_app(catalog, config.catalog_mode)).await?;</pre>
+</section>
+
+<section id="design">
+  <h2>5. 關鍵設計</h2>
+
+  <h3>介面是拆分的接縫</h3>
+  <p>orders 只依賴 <code>CatalogPort</code> 這個 trait，所以 catalog 從「同程序內」搬到「另一個程序」時，只要新增一個用 HTTP 實作同一個 trait 的 <code>HttpCatalogClient</code>。這就是為什麼起點必須是<strong>模組化</strong>單體：模組之間如果直接存取彼此的資料，就沒有這條接縫可以切。</p>
+<pre><span class="c">// monolith/src/modules/catalog/port.rs</span>
+#[async_trait]
+pub trait CatalogPort: Send + Sync {
+    async fn list(&amp;self) -&gt; Result&lt;Vec&lt;Product&gt;, CatalogError&gt;;
+
+    async fn get(&amp;self, id: u64) -&gt; Result&lt;Product, CatalogError&gt;;
+
+    /// Atomically takes `quantity` units out of stock and returns the updated product.
+    async fn reserve(&amp;self, id: u64, quantity: u64) -&gt; Result&lt;Product, CatalogError&gt;;
+}
+
+pub type SharedCatalog = Arc&lt;dyn CatalogPort&gt;;</pre>
+
+  <h3>gateway 切換路由：一次寫入，不影響進行中的請求</h3>
+  <p>目前的路由存在 <code>RwLock&lt;CatalogRoute&gt;</code> 裡。<code>PUT /admin/routes</code> 只是寫入一個新值；每個請求進來時讀一次、決定上游之後就不再看它，所以切換那一瞬間正在處理的請求不會被中斷。</p>
+<pre><span class="c">// gateway/src/routing.rs</span>
+pub fn resolve&lt;'a&gt;(path: &amp;str, route: CatalogRoute, upstreams: &amp;'a Upstreams) -&gt; &amp;'a str {
+    match route {
+        CatalogRoute::Service if is_catalog_path(path) =&gt; &amp;upstreams.catalog,
+        CatalogRoute::Service | CatalogRoute::Monolith =&gt; &amp;upstreams.monolith,
+    }
+}</pre>
+
+  <h3>其他</h3>
+  <table>
+    <thead><tr><th>設計</th><th>做法</th><th>在哪裡</th></tr></thead>
+    <tbody>
+      <tr><td>錯誤跨網路後不變形</td><td>錯誤訊息用文字傳遞，遠端 client 依狀態碼還原成同一個 <code>CatalogError</code></td><td><code>catalog/error.rs</code>、<code>remote.rs</code></td></tr>
+      <tr><td>錯誤訊息不外洩</td><td>客戶端只看到「catalog unavailable」，網址和原因只寫進 log</td><td><code>remote.rs</code> 的 <code>unavailable()</code></td></tr>
+      <tr><td>標示誰回應</td><td>monolith 和 catalog-service 用 middleware 幫每個回應加上 <code>X-Served-By</code></td><td><code>lib.rs</code>、<code>catalog-service/src/main.rs</code> 的 <code>served_by</code></td></tr>
+      <tr><td>兩份 catalog 不會走樣</td><td>兩份 <code>catalog/</code> 檔案逐字相同（模組內一律用 <code>super::</code> 相對路徑），測試也跟著程式一起複製，兩份各跑一次</td><td><code>diff -r monolith/src/modules/catalog catalog-service/src/catalog</code></td></tr>
+      <tr><td>只聽本機</td><td>三個程式都只綁 127.0.0.1；<code>/admin/routes</code> 沒有驗證，正式環境一定要加</td><td>各自的 <code>main.rs</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="run">
+  <h2>6. 怎麼跑</h2>
+<pre><span class="c"># 在 rust/ 底下</span>
+./run.sh build                     <span class="c"># cargo build --release</span>
+./run.sh test                      <span class="c"># 35 個單元測試</span>
+
+<span class="c"># 手動啟動（三個終端機分別執行），這是階段二的設定</span>
+PORT=8082 ./run.sh catalog-service
+PORT=8081 CATALOG_MODE=remote CATALOG_URL=http://127.0.0.1:8082 ./run.sh monolith
+PORT=8080 CATALOG_ROUTE=monolith ./run.sh gateway
+
+<span class="c"># 打打看</span>
+curl -i http://127.0.0.1:8080/products/1
+curl -i -X POST http://127.0.0.1:8080/orders -H 'Content-Type: application/json' -d '{"productId":1,"quantity":2}'
+curl -i -X PUT  http://127.0.0.1:8080/admin/routes -H 'Content-Type: application/json' -d '{"catalog":"service"}'
+
+<span class="c"># 或者一次跑完三個階段的自動驗證（在 PoC 根目錄）</span>
+../verify/run.sh rust</pre>
+
+  <table>
+    <thead><tr><th>環境變數</th><th>用在</th><th>預設</th><th>說明</th></tr></thead>
+    <tbody>
+      <tr><td><code>PORT</code></td><td>全部</td><td>8080 / 8081 / 8082</td><td>只綁 127.0.0.1</td></tr>
+      <tr><td><code>CATALOG_MODE</code></td><td>monolith</td><td><code>inprocess</code></td><td><code>inprocess</code>：用單體內的 catalog；<code>remote</code>：呼叫 catalog-service</td></tr>
+      <tr><td><code>CATALOG_URL</code></td><td>monolith、gateway</td><td><code>http://127.0.0.1:8082</code></td><td>catalog-service 的位址</td></tr>
+      <tr><td><code>MONOLITH_URL</code></td><td>gateway</td><td><code>http://127.0.0.1:8081</code></td><td>monolith 的位址</td></tr>
+      <tr><td><code>CATALOG_ROUTE</code></td><td>gateway</td><td><code>monolith</code></td><td>啟動時 <code>/products</code> 送給誰，之後可以用 <code>/admin/routes</code> 改</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  完整的實驗設計、三種語言的比較和結論，請看 <a href="../README.md">PoC 的 README</a>。同樣的說明也有 <a href="../python/how-it-works.html">Python 版</a> 和 <a href="../dotnet/how-it-works.html">.NET 版</a>。
+</footer>
+
+</main>
+<script>
+  const PHASES = {
+    p1:  { on: ["client", "gw-orders", "gw-mcat", "orders-port", "port-store"], fail: [], dim: ["http", "svc"], down: [] },
+    p2a: { on: ["client", "gw-orders", "gw-mcat", "orders-port", "port-http", "http-svc"], fail: [], dim: ["store"], down: [] },
+    p2b: { on: ["client", "gw-orders", "gw-svc", "orders-port", "port-http", "http-svc"], fail: [], dim: ["store"], down: [] },
+    p3:  { on: ["client", "gw-orders", "orders-port", "port-http"], fail: ["gw-svc", "http-svc"], dim: ["store"], down: ["svc"] },
+  };
+
+  function showPhase(id) {
+    const phase = PHASES[id];
+    document.querySelectorAll("#flow [data-edge]").forEach((edge) => {
+      edge.classList.toggle("on", phase.on.includes(edge.dataset.edge));
+      edge.classList.toggle("fail", phase.fail.includes(edge.dataset.edge));
+    });
+    document.querySelectorAll("#flow [data-node]").forEach((node) => {
+      node.classList.toggle("dim", phase.dim.includes(node.dataset.node));
+      node.classList.toggle("down", phase.down.includes(node.dataset.node));
+    });
+    document.querySelectorAll("[data-panel]").forEach((panel) => { panel.hidden = panel.dataset.panel !== id; });
+    document.querySelectorAll("[data-phase-btn]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.phaseBtn === id));
+    });
+  }
+
+  document.querySelectorAll("[data-phase-btn]").forEach((button) => {
+    button.addEventListener("click", () => showPhase(button.dataset.phaseBtn));
+  });
+  showPhase("p1");
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "lang": "rust",
+  "phase": "catalog-down",
+  "passed": 6,
+  "failures": []
+}
