@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CapTheorem/CapTheorem.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CapTheorem.Tests/CapTheorem.Tests.csproj" />
+  </Folder>
+</Solution>
