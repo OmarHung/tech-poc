@@ -15,6 +15,7 @@
 
 - 資料夾名稱：`YYYY-MM-主題`，主題用英文 kebab-case
 - 每個 PoC 都要有 `README.md`，格式照 [TEMPLATE.md](./TEMPLATE.md)
+- 每個 PoC 的每個實作資料夾（例如 `rust/`、`dotnet/`）都要有一份 `how-it-works.html`，用瀏覽器打開就能看懂程式怎麼運作，規範照 [HOW-IT-WORKS-GUIDE.md](./HOW-IT-WORKS-GUIDE.md)。狀態改成 `已完成` 之前一定要寫好
 - 狀態只用這四種：`規劃中`、`進行中`、`已完成`、`已放棄`
 - 結論只用這三種：`可行`、`不可行`、`有條件可行`（後面寫條件）
 - PoC 完成後，記得回來更新上面的清單
