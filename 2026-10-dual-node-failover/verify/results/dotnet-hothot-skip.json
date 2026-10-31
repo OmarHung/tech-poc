@@ -5,17 +5,17 @@
   "passed": 3,
   "failures": [],
   "metrics": {
-    "produced": 1862,
-    "applied": 1862,
-    "received": 2795,
-    "extra_copies": 933,
-    "conflicts": 473,
+    "produced": 1633,
+    "applied": 1633,
+    "received": 2427,
+    "extra_copies": 794,
+    "conflicts": 400,
     "stale": 0,
     "missing": 0,
-    "wrong": 505,
+    "wrong": 451,
     "latency_p50_ms": 1,
-    "latency_p99_ms": 5,
-    "latency_max_ms": 25,
-    "longest_output_gap_ms": 74
+    "latency_p99_ms": 4,
+    "latency_max_ms": 24,
+    "longest_output_gap_ms": 20
   }
 }

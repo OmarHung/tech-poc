@@ -1,0 +1,24 @@
+{
+  "impl": "rust",
+  "scenario": "dispatch-sink-cut",
+  "title": "Dispatch: a cannot reach the sink while holding a task",
+  "passed": 5,
+  "failures": [],
+  "metrics": {
+    "produced": 54,
+    "applied": 54,
+    "received": 54,
+    "extra_copies": 0,
+    "conflicts": 0,
+    "stale": 0,
+    "missing": 0,
+    "wrong": 0,
+    "latency_p50_ms": 986,
+    "latency_p99_ms": 4478,
+    "latency_max_ms": 4478,
+    "longest_output_gap_ms": 410,
+    "reassignments": 1,
+    "cut_off_task_latency_ms": 4478,
+    "abandoned_by_a": 1
+  }
+}

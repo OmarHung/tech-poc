@@ -13,10 +13,10 @@
     "stale": 0,
     "missing": 0,
     "wrong": 0,
-    "latency_p50_ms": 3013,
-    "latency_p99_ms": 3032,
-    "latency_max_ms": 3032,
-    "longest_output_gap_ms": 2006,
+    "latency_p50_ms": 3010,
+    "latency_p99_ms": 3030,
+    "latency_max_ms": 3030,
+    "longest_output_gap_ms": 2010,
     "reassignments": 0
   }
 }

@@ -11,6 +11,8 @@ import re
 
 INT64_MIN = -(2**63)
 INT64_MAX = 2**63 - 1
+INT32_MIN = -(2**31)
+INT32_MAX = 2**31 - 1
 _NODE_ID = re.compile(r"[a-z0-9-]{1,32}")
 
 
@@ -40,6 +42,19 @@ def loads(data: bytes | str) -> object:
 
 def dumps(value: object) -> bytes:
     return json.dumps(value, separators=(",", ":")).encode()
+
+
+def utf16_length(value: str) -> int:
+    """Length in UTF-16 code units, like .NET's string.Length, so both versions draw length limits in one place."""
+    return len(value.encode("utf-16-le")) // 2
+
+
+def whole_number(value: object, path: str, minimum: int = INT64_MIN, maximum: int = INT64_MAX) -> int:
+    """A JSON integer in [minimum, maximum]. type() rather than isinstance(): bool is a subclass of int, and true is
+    not 1."""
+    if type(value) is not int or not minimum <= value <= maximum:
+        raise WireError(path)
+    return value
 
 
 def _is_text(value: str) -> bool:
@@ -75,13 +90,16 @@ class JsonObject:
         return value
 
     def integer(self, name: str, default: int = 0) -> int:
+        """A 64-bit integer (.NET long)."""
         if not self.has(name):
             return default
-        value = self._fields[name.lower()]
-        # type() rather than isinstance(): bool is a subclass of int, and true is not 1.
-        if type(value) is not int or not INT64_MIN <= value <= INT64_MAX:
-            raise WireError(self.path(name))
-        return value
+        return whole_number(self._fields[name.lower()], self.path(name))
+
+    def int32(self, name: str, default: int = 0) -> int:
+        """A 32-bit integer (.NET int): 2**31 is as wrong here as "2"."""
+        if not self.has(name):
+            return default
+        return whole_number(self._fields[name.lower()], self.path(name), INT32_MIN, INT32_MAX)
 
     def boolean(self, name: str, default: bool = False) -> bool:
         if not self.has(name):
@@ -98,3 +116,12 @@ class JsonObject:
         if not isinstance(value, list):
             raise WireError(self.path(name))
         return value
+
+    def integers(self, name: str) -> dict[str, int] | None:
+        """An object of 64-bit integers, e.g. balances per account. Its keys are data, so they keep their case."""
+        value = self._fields.get(name.lower())
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise WireError(self.path(name))
+        return {str(key): whole_number(item, f"{self.path(name)}.{key}") for key, item in value.items()}

@@ -451,6 +451,9 @@ def scenario_dispatch_sink_cut(ctx: Checks) -> None:
         check_complete_and_correct(ctx, missing, wrong)
         # Heartbeats prove a is alive, not that it can finish: it must let go, or the task waits for the cut to end.
         ctx.check("a let the task go and b finished it", stuck.get("node") == "b", stuck)
+        # And it must stop taking work until the sink is back, or it stalls the next task (maybe the same one) too.
+        abandoned = ctx.metrics.get("abandoned_by_a")
+        ctx.check("a took no more tasks while it could not deliver them", abandoned == 1, abandoned)
         ctx.check("results never disagreed", ctx.metrics["conflicts"] == 0, ctx.metrics["conflicts"])
 
 

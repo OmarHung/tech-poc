@@ -13,11 +13,11 @@
     "stale": 0,
     "missing": 0,
     "wrong": 0,
-    "latency_p50_ms": 956,
-    "latency_p99_ms": 2336,
-    "latency_max_ms": 2336,
-    "longest_output_gap_ms": 408,
+    "latency_p50_ms": 831,
+    "latency_p99_ms": 2346,
+    "latency_max_ms": 2346,
+    "longest_output_gap_ms": 415,
     "reassignments": 1,
-    "killed_task_latency_ms": 2336
+    "killed_task_latency_ms": 2346
   }
 }

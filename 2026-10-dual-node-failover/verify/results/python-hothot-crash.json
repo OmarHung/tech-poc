@@ -1,0 +1,22 @@
+{
+  "impl": "python",
+  "scenario": "hothot-crash",
+  "title": "Hot-hot: a killed, restarts from its checkpoint; then b killed",
+  "passed": 5,
+  "failures": [],
+  "metrics": {
+    "produced": 1574,
+    "applied": 1574,
+    "received": 2735,
+    "extra_copies": 1161,
+    "conflicts": 0,
+    "stale": 0,
+    "missing": 0,
+    "wrong": 0,
+    "latency_p50_ms": 1,
+    "latency_p99_ms": 3,
+    "latency_max_ms": 5,
+    "longest_output_gap_ms": 13,
+    "catch_up_s": 0.544
+  }
+}

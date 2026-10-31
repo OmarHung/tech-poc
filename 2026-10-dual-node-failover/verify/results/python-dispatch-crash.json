@@ -1,0 +1,23 @@
+{
+  "impl": "python",
+  "scenario": "dispatch-crash",
+  "title": "Dispatch: a killed while holding a task, restarted later",
+  "passed": 4,
+  "failures": [],
+  "metrics": {
+    "produced": 50,
+    "applied": 50,
+    "received": 50,
+    "extra_copies": 0,
+    "conflicts": 0,
+    "stale": 0,
+    "missing": 0,
+    "wrong": 0,
+    "latency_p50_ms": 906,
+    "latency_p99_ms": 2343,
+    "latency_max_ms": 2343,
+    "longest_output_gap_ms": 420,
+    "reassignments": 1,
+    "killed_task_latency_ms": 2343
+  }
+}

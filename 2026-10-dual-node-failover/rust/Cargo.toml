@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["shared", "node", "witness", "gateway"]
+members = ["shared", "node", "witness", "gateway", "upstream", "worker", "sink"]
 
 [workspace.package]
 version = "0.1.0"

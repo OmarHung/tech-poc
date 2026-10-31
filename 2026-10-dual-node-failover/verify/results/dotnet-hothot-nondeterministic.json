@@ -5,18 +5,18 @@
   "passed": 2,
   "failures": [],
   "metrics": {
-    "produced": 616,
-    "applied": 616,
-    "received": 1232,
-    "extra_copies": 616,
-    "conflicts": 24,
+    "produced": 526,
+    "applied": 526,
+    "received": 1052,
+    "extra_copies": 526,
+    "conflicts": 17,
     "stale": 0,
     "missing": 0,
     "latency_p50_ms": 1,
-    "latency_p99_ms": 7,
-    "latency_max_ms": 24,
-    "longest_output_gap_ms": 20,
-    "kept_from_a": 317,
-    "kept_from_b": 299
+    "latency_p99_ms": 4,
+    "latency_max_ms": 25,
+    "longest_output_gap_ms": 12,
+    "kept_from_a": 257,
+    "kept_from_b": 269
   }
 }

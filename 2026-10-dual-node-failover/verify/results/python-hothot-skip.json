@@ -1,0 +1,21 @@
+{
+  "impl": "python",
+  "scenario": "hothot-skip",
+  "title": "Hot-hot: a rejoins at the newest event instead of its checkpoint (control group)",
+  "passed": 3,
+  "failures": [],
+  "metrics": {
+    "produced": 1768,
+    "applied": 1768,
+    "received": 2654,
+    "extra_copies": 886,
+    "conflicts": 422,
+    "stale": 0,
+    "missing": 0,
+    "wrong": 625,
+    "latency_p50_ms": 1,
+    "latency_p99_ms": 2,
+    "latency_max_ms": 4,
+    "longest_output_gap_ms": 10
+  }
+}

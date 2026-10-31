@@ -1,0 +1,22 @@
+{
+  "impl": "python",
+  "scenario": "hothot-partition",
+  "title": "Hot-hot: a cut off from upstream and sink for 3 s; then b killed",
+  "passed": 5,
+  "failures": [],
+  "metrics": {
+    "produced": 1713,
+    "applied": 1713,
+    "received": 3134,
+    "extra_copies": 1421,
+    "conflicts": 0,
+    "stale": 0,
+    "missing": 0,
+    "wrong": 0,
+    "latency_p50_ms": 1,
+    "latency_p99_ms": 2,
+    "latency_max_ms": 5,
+    "longest_output_gap_ms": 12,
+    "catch_up_s": 0.603
+  }
+}

@@ -63,8 +63,10 @@ public sealed class WorkTests
         work.Cut(holder, "sink");
         await InProcessWork.WaitUntilAsync(() => work.Tasks.Stats().Done == 1, "the other worker to finish it");
 
+        // A single task and no backlog: without the circuit breaker the cut-off worker, waiting longest, could get the
+        // same task straight back and stall it again.
         Assert.NotEqual(holder, work.Results.Snapshot().Results["task-1"].Node);
-        Assert.True(work.Tasks.Stats().Reassignments >= 1);
+        Assert.Equal(1, work.Tasks.Stats().Reassignments);
     }
 
     [Fact]

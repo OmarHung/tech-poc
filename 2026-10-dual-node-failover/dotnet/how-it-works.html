@@ -374,14 +374,14 @@
         <dt>上游</dt><dd>事件流水帳，只能附加，可以從任何位置重讀（<code>EventLog.ReadAsync()</code>）。</dd>
         <dt>worker</dt><dd>各自從自己的位置往後讀，依序更新帳戶餘額，每筆送一個結果（<code>event-&lt;編號&gt;</code> → <code>帳戶:餘額</code>）。一批送完才存檢查點。</dd>
         <dt>下游</dt><dd>同一個事件收到兩份，第一份套用、第二份記成重複（<code>ResultStore.Record()</code>）。</dd>
-        <dt>實測</dt><dd>1,748 筆事件下游收到 3,039 份：沒有去重的話，副作用會多發生 1,291 次。</dd>
+        <dt>實測</dt><dd>1,505 筆事件下游收到 2,616 份：沒有去重的話，副作用會多發生 1,111 次。</dd>
       </dl>
     </div>
     <div class="panel" data-panel="hh-crash" hidden>
       <h3>架構 B：a 被砍</h3>
       <dl>
         <dt>發生什麼</dt><dd>什麼都不用做。b 本來就在處理每一筆，沒有偵測、沒有切換。</dd>
-        <dt>實測</dt><dd>下游最長 24 ms 沒有新結果，跟平常一樣；1,748 筆全部有結果、全部正確。</dd>
+        <dt>實測</dt><dd>下游最長 14 ms 沒有新結果，跟平常一樣；1,505 筆全部有結果、全部正確。</dd>
       </dl>
     </div>
     <div class="panel" data-panel="hh-replay" hidden>
@@ -389,14 +389,14 @@
       <dl>
         <dt>補讀</dt><dd>a 讀回 <code>checkpoint.json</code>（讀到哪、各帳戶餘額），從那裡往後讀，停機期間的事件一筆不漏。</dd>
         <dt>重送</dt><dd>被砍時已經送出、但還沒存進檢查點的那批會再送一次，下游當成重複忽略。</dd>
-        <dt>實測</dt><dd>停機 3 秒間的約 600 筆，從下重啟指令算起 0.47 秒補完（含程式啟動）；之後再砍 b，a 獨自繼續，最後的餘額跟正確答案完全一樣。網路斷 3 秒的情況，恢復後 0.12 秒補完。</dd>
+        <dt>實測</dt><dd>停機 3 秒間的約 600 筆，從下重啟指令算起 0.43 秒補完（含程式啟動）；之後再砍 b，a 獨自繼續，最後的餘額跟正確答案完全一樣。網路斷 3 秒的情況，恢復後 0.11 秒補完。</dd>
       </dl>
     </div>
     <div class="panel" data-panel="hh-skip" hidden>
       <h3>架構 B 的錯誤做法：重啟時直接從最新的事件開始（<code>START_FROM=latest</code>）</h3>
       <dl>
         <dt>發生什麼</dt><dd>a 的餘額少了停機期間的事件，之後每一筆受影響帳戶的結果都跟 b 不同。下游先收到誰的就用誰的。</dd>
-        <dt>實測</dt><dd>不一致 473 筆；b 掛掉之後，下游套用了 505 筆錯誤結果。另一種錯是結果帶本機時鐘（<code>DETERMINISTIC=false</code>）：只有 4% 不一致，偶發，最難發現。</dd>
+        <dt>實測</dt><dd>不一致 400 筆；b 掛掉之後，下游套用了 451 筆錯誤結果。另一種錯是結果帶本機時鐘（<code>DETERMINISTIC=false</code>）：526 筆中只有 17 筆（3%）不一致，偶發，最難發現。</dd>
       </dl>
     </div>
     <div class="panel" data-panel="d-normal" hidden>
@@ -404,14 +404,14 @@
       <dl>
         <dt>租任務</dt><dd>worker 向上游要任務（<code>TaskQueue.LeaseAsync()</code>），拿到 <code>{id, input, attempt, ttlMs}</code>，租約 2 秒。</dd>
         <dt>做事</dt><dd>每 1/3 個租約送一次心跳延長租約，做完先寫結果到下游，再向上游回報完成（<code>DispatchWorker.RunAsync()</code>）。</dd>
-        <dt>實測</dt><dd>每秒 5 件、每件 300 ms，兩台輪流接，任務延遲 p50 約 1 秒。每件做 3 秒（比租約長）時靠心跳延長，0 次被誤判改派。</dd>
+        <dt>實測</dt><dd>每秒 5 件、每件 300 ms，兩台輪流接，任務延遲 p50 約 0.8 秒。每件做 3 秒（比租約長）時靠心跳延長，0 次被誤判改派。</dd>
       </dl>
     </div>
     <div class="panel" data-panel="d-crash" hidden>
       <h3>架構 C：a 做到一半被砍</h3>
       <dl>
         <dt>發生什麼</dt><dd>a 不再心跳，租約到期後上游把那件任務放回佇列最前面（<code>TaskQueue.ExpireOverdue()</code>），attempt 變 2，b 接手。其他任務不受影響。</dd>
-        <dt>實測</dt><dd>那件任務 2.34 秒後完成（租約 2 秒＋做事 0.3 秒），51 件全部正確。</dd>
+        <dt>實測</dt><dd>那件任務 2.35 秒後完成（租約 2 秒＋做事 0.3 秒），51 件全部正確。</dd>
       </dl>
     </div>
     <div class="panel" data-panel="d-pause" hidden>
@@ -426,8 +426,8 @@
       <h3>架構 C：a 連不到下游，但心跳照常送到上游</h3>
       <dl>
         <dt>問題</dt><dd>心跳一直成功，租約一直被延長，上游以為 a 好好的，另一台永遠接不到這件任務。心跳只證明 worker 活著，不證明它做得完。</dd>
-        <dt>解法</dt><dd>a 寫不出結果超過一個租約就放手（<code>DispatchWorker.DeliverAsync()</code>），心跳跟著停，租約到期後改派給 b。</dd>
-        <dt>實測</dt><dd>那件任務 4.48 秒後由 b 完成：a 先試 2 秒，租約再 2 秒到期。放手時如果主動通知上游，還能再快約 2 秒。</dd>
+        <dt>解法</dt><dd>a 寫不出結果超過一個租約就放手（<code>DispatchWorker.DeliverAsync()</code>），心跳跟著停，租約到期後改派給 b。放手後先不接新工作，直到下游恢復（<code>SinkBackAsync()</code>）；不然 a 會一件接一件地卡，甚至接回剛放掉的同一件。</dd>
+        <dt>實測</dt><dd>那件任務 4.49 秒後由 b 完成：a 先試 2 秒，租約再 2 秒到期。a 只放掉這 1 件。放手時如果主動通知上游，還能再快約 2 秒。</dd>
       </dl>
     </div>
     <div class="panel" data-panel="d-acklost" hidden>
@@ -628,7 +628,7 @@ var completed = await CompleteAsync(lease, tracker, ct);</pre>
       <tr><td>兩台算出不同的結果</td><td><code>ResultStore.Record()</code></td><td>409 衝突，保留第一份並計數</td></tr>
       <tr><td>指派的 worker 被砍或斷線</td><td><code>TaskQueue</code> 的租約到期（<code>LeaseReaper</code> 每 0.1 秒檢查）</td><td>任務放回佇列最前面，attempt 加 1，改派</td></tr>
       <tr><td>指派的 worker 被凍結後恢復</td><td><code>DispatchWorker.StillHolds()</code></td><td>租約過期就放棄，不寫結果</td></tr>
-      <tr><td>指派的 worker 連不到下游</td><td><code>DispatchWorker.DeliverAsync()</code></td><td>超過一個租約就放手；心跳停止，租約到期後改派</td></tr>
+      <tr><td>指派的 worker 連不到下游</td><td><code>DispatchWorker.DeliverAsync()</code>、<code>SinkBackAsync()</code></td><td>超過一個租約就放手；心跳停止，租約到期後改派。下游恢復前不接新工作</td></tr>
       <tr><td>上游重啟、事件從頭編號</td><td><code>HotHotWorker.ExecuteAsync()</code></td><td>發現上游比自己的進度短就停下來報錯，不送錯的結果</td></tr>
       <tr><td>舊的 attempt 比新的晚到下游</td><td><code>ResultStore.Record()</code></td><td>409 過期</td></tr>
       <tr><td>完成回報時租約已經不是自己的</td><td><code>TaskQueue.Complete()</code></td><td>409，記成過期的完成回報</td></tr>
@@ -729,7 +729,7 @@ public LeaseReply Acquire(string? node)
       <tr><td>C：worker 自己算租約</td><td>跟架構 A 的主機一樣，從送出請求的時間起算、提早 10% 結束，所以一定比上游先放手</td><td><code>LeaseTracker</code></td></tr>
       <tr><td>C：改派的任務排最前面</td><td>它已經等最久了</td><td><code>TaskQueue.ExpireLocked()</code></td></tr>
       <tr><td>C：心跳固定間隔、每次有上限</td><td>一次卡住的心跳不會把下一次推到租約之後</td><td><code>DispatchWorker.HeartbeatAsync()</code></td></tr>
-      <tr><td>C：做不完就放手</td><td>心跳只證明活著，不證明做得完；連不到下游還一直心跳，任務會卡住</td><td><code>DispatchWorker.DeliverAsync()</code></td></tr>
+      <tr><td>C：做不完就放手，然後先停手</td><td>心跳只證明活著，不證明做得完；連不到下游還一直心跳，任務會卡住。放手後若馬上接新工作，會再卡一件，甚至接回同一件（它往往是等最久的那台）</td><td><code>DispatchWorker.DeliverAsync()</code>、<code>SinkBackAsync()</code>（斷路器）</td></tr>
       <tr><td>B、C：下游以編號去重</td><td>重複無法完全避免（at-least-once），只能讓它無害；內容不同的重複當成衝突記下來</td><td><code>ResultStore.Record()</code></td></tr>
     </tbody>
   </table>
@@ -795,7 +795,7 @@ curl -s -X POST http://127.0.0.1:8120/tasks -H 'Content-Type: application/json' 
 </section>
 
 <footer>
-  完整的實驗設計、三種語言和三種架構的比較與結論，請看 <a href="../README.md">PoC 的 README</a>。同樣的說明也有 <a href="../rust/how-it-works.html">Rust 版</a> 和 <a href="../python/how-it-works.html">Python 版</a>（目前只有架構 A）。
+  完整的實驗設計、三種語言和三種架構的比較與結論，請看 <a href="../README.md">PoC 的 README</a>。同樣的說明也有 <a href="../rust/how-it-works.html">Rust 版</a> 和 <a href="../python/how-it-works.html">Python 版</a>，三種架構都有。
 </footer>
 
 </main>
@@ -838,15 +838,15 @@ curl -s -X POST http://127.0.0.1:8120/tasks -H 'Content-Type: application/json' 
     },
     "hh-crash": {
       on: ["producer", "up-b", "b-sink"], fail: ["up-a", "a-sink"], dim: [], down: ["a"], primary: [],
-      roles: { up: "事件流水帳", a: "✕ 停機", b: "照常處理 · 不用切換", sink: "最長 24 ms 沒有新結果" },
+      roles: { up: "事件流水帳", a: "✕ 停機", b: "照常處理 · 不用切換", sink: "最長 14 ms 沒有新結果" },
     },
     "hh-replay": {
       on: ["producer", "up-a", "up-b", "a-sink", "b-sink"], fail: [], dim: [], down: [], primary: [],
-      roles: { up: "從 a 的檢查點重讀", a: "補讀約 600 筆（0.47 秒）", b: "照常處理", sink: "重送的部分當重複" },
+      roles: { up: "從 a 的檢查點重讀", a: "補讀約 600 筆（0.43 秒）", b: "照常處理", sink: "重送的部分當重複" },
     },
     "hh-skip": {
       on: ["producer", "up-a", "up-b", "b-sink"], fail: ["a-sink"], dim: [], down: [], primary: [],
-      roles: { up: "a 跳到最新的事件", a: "少了停機期間 · 餘額錯", b: "照常處理", sink: "不一致 473 筆" },
+      roles: { up: "a 跳到最新的事件", a: "少了停機期間 · 餘額錯", b: "照常處理", sink: "不一致 400 筆" },
     },
     "d-normal": {
       on: ["producer", "up-a", "up-b", "a-sink", "b-sink"], fail: [], dim: [], down: [], primary: [],
@@ -854,7 +854,7 @@ curl -s -X POST http://127.0.0.1:8120/tasks -H 'Content-Type: application/json' 
     },
     "d-crash": {
       on: ["producer", "up-b", "b-sink"], fail: ["up-a"], dim: [], down: ["a"], primary: [],
-      roles: { up: "12 的租約到期 → 改派", a: "✕ 停機（手上是 12）", b: "接手 12（attempt 2）", sink: "12 晚 2.34 秒完成" },
+      roles: { up: "12 的租約到期 → 改派", a: "✕ 停機（手上是 12）", b: "接手 12（attempt 2）", sink: "12 晚 2.35 秒完成" },
     },
     "d-pause": {
       on: ["producer", "up-b", "b-sink"], fail: [], dim: ["a-sink"], down: ["a"], primary: [],
@@ -862,7 +862,7 @@ curl -s -X POST http://127.0.0.1:8120/tasks -H 'Content-Type: application/json' 
     },
     "d-sinkcut": {
       on: ["producer", "up-a", "up-b", "b-sink"], fail: ["a-sink"], dim: [], down: [], primary: [],
-      roles: { up: "a 停止心跳後改派 12", a: "寫不出 12 → 2 秒後放手", b: "接手 12（attempt 2）", sink: "12 晚 4.48 秒完成" },
+      roles: { up: "a 停止心跳後改派 12", a: "放手 12 · 下游恢復前不接新工作", b: "接手 12（attempt 2）", sink: "12 晚 4.49 秒完成" },
     },
     "d-acklost": {
       on: ["producer", "up-b", "a-sink", "b-sink"], fail: ["up-a"], dim: [], down: [], primary: [],

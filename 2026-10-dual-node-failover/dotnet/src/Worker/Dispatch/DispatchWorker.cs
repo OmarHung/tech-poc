@@ -15,12 +15,17 @@ public sealed class DispatchWorker(
     ILogger<DispatchWorker> logger) : BackgroundService
 {
     private readonly MonotonicClock _clock = new(time);
+    private bool _sinkDown;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("Dispatched worker {Worker} starting; lease check {LeaseCheck}", config.WorkerId, config.LeaseCheck);
         while (!stoppingToken.IsCancellationRequested)
         {
+            if (_sinkDown && !await SinkBackAsync(stoppingToken))
+            {
+                continue;
+            }
             var sentAt = _clock.Now;
             var (reached, lease) = await client.LeaseTaskAsync(stoppingToken);
             if (lease is not null)
@@ -72,12 +77,12 @@ public sealed class DispatchWorker(
 
     internal static string Compute(long input) => $"{input}^2={input * input}";
 
-    private bool StillHolds(TaskLease lease, LeaseTracker tracker, string when)
+    private bool StillHolds(TaskLease lease, LeaseTracker tracker, string when) =>
+        !config.LeaseCheck || tracker.IsValid || GiveUp(lease, when);
+
+    /// <summary>Records the task as abandoned. Always false, so callers can return it.</summary>
+    private bool GiveUp(TaskLease lease, string when)
     {
-        if (!config.LeaseCheck || tracker.IsValid)
-        {
-            return true;
-        }
         logger.LogWarning("Gave up task {Id} attempt {Attempt} {When}: lease lost", lease.Id, lease.Attempt, when);
         status.TaskFinished("abandoned");
         return false;
@@ -96,7 +101,9 @@ public sealed class DispatchWorker(
             var timeout = config.LeaseCheck ? Min(config.RpcTimeout, tracker.Remaining) : config.RpcTimeout;
             if (timeout <= TimeSpan.Zero)
             {
-                return StillHolds(lease, tracker, "while writing the result");
+                // Out of lease and nothing written. Do not look again: a heartbeat landing right now could make the
+                // lease valid, and returning true would report the task done without a result.
+                return GiveUp(lease, "while writing the result");
             }
             var reply = await client.DeliverAsync(result, ct, timeout);
             if (reply is not null)
@@ -108,6 +115,7 @@ public sealed class DispatchWorker(
             {
                 logger.LogWarning("Gave up task {Id} attempt {Attempt}: sink unreachable for a whole lease", lease.Id, lease.Attempt);
                 status.TaskFinished("abandoned");
+                _sinkDown = true; // take no more work until it is back, or the next task (maybe this one again) stalls too
                 return false;
             }
             await Task.Delay(config.RetryDelay, time, ct);
@@ -116,6 +124,22 @@ public sealed class DispatchWorker(
                 return false;
             }
         }
+    }
+
+    /// <summary>
+    /// Circuit breaker after giving a task up for an unreachable sink: lease nothing until the sink answers again.
+    /// Otherwise this worker keeps taking tasks it cannot finish, and may even get back the one it just let go.
+    /// </summary>
+    private async Task<bool> SinkBackAsync(CancellationToken ct)
+    {
+        if (await client.SinkReachableAsync(ct))
+        {
+            logger.LogInformation("Sink reachable again; taking tasks");
+            _sinkDown = false;
+            return true;
+        }
+        await Task.Delay(config.RetryDelay, time, ct);
+        return false;
     }
 
     /// <summary>Keeps reporting until the upstream answers. False means another attempt owns the task (it will run again).</summary>

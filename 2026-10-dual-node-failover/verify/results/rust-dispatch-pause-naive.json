@@ -1,0 +1,24 @@
+{
+  "impl": "rust",
+  "scenario": "dispatch-pause-naive",
+  "title": "Dispatch: same freeze, worker does not check its lease (control group)",
+  "passed": 4,
+  "failures": [],
+  "metrics": {
+    "produced": 49,
+    "applied": 49,
+    "received": 50,
+    "extra_copies": 1,
+    "conflicts": 0,
+    "stale": 1,
+    "missing": 0,
+    "wrong": 0,
+    "latency_p50_ms": 787,
+    "latency_p99_ms": 2342,
+    "latency_max_ms": 2342,
+    "longest_output_gap_ms": 418,
+    "reassignments": 1,
+    "stale_completions": 1,
+    "abandoned_by_a": 0
+  }
+}

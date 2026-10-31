@@ -1,4 +1,4 @@
-//! HTTP plumbing shared by the node, the witness and the gateway.
+//! HTTP plumbing shared by every process.
 
 use std::io;
 use std::net::Ipv4Addr;

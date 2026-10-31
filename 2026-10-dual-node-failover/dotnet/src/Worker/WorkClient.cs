@@ -48,6 +48,13 @@ public sealed class WorkClient(HttpClient http, WorkerConfig config, ILogger<Wor
     /// <returns>True if the task is done, false if another attempt owns it now (or the task is gone), null if the upstream could not be reached.</returns>
     public Task<bool?> CompleteAsync(TaskLease lease, CancellationToken ct) => TaskCallAsync(lease, "complete", config.RpcTimeout, ct);
 
+    /// <summary>Whether the sink answers its health check.</summary>
+    public async Task<bool> SinkReachableAsync(CancellationToken ct)
+    {
+        using var response = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, new Uri(_sink, "health")), config.RpcTimeout, ct);
+        return response is { IsSuccessStatusCode: true };
+    }
+
     /// <param name="timeout">Defaults to RPC_TIMEOUT_MS; a dispatched worker passes what is left of its lease.</param>
     /// <returns>The sink's verdict ("applied", "duplicate", "conflict", "stale"), or null if it could not be reached.</returns>
     public async Task<string?> DeliverAsync(ResultRecord record, CancellationToken ct, TimeSpan? timeout = null)

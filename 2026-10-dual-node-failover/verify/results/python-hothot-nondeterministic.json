@@ -1,0 +1,22 @@
+{
+  "impl": "python",
+  "scenario": "hothot-nondeterministic",
+  "title": "Hot-hot: results carry each worker's clock (control group)",
+  "passed": 2,
+  "failures": [],
+  "metrics": {
+    "produced": 555,
+    "applied": 555,
+    "received": 1110,
+    "extra_copies": 555,
+    "conflicts": 22,
+    "stale": 0,
+    "missing": 0,
+    "latency_p50_ms": 1,
+    "latency_p99_ms": 3,
+    "latency_max_ms": 21,
+    "longest_output_gap_ms": 21,
+    "kept_from_a": 260,
+    "kept_from_b": 295
+  }
+}

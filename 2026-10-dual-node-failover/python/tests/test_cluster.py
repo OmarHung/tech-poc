@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from helpers import FakeNetwork
 from node.config import NodeConfig
 from node.main import NodeRuntime, build_app
 from shared.clock import MonotonicClock
@@ -25,38 +26,6 @@ NODE_IDS = ("a", "b")
 
 def other(node: str) -> str:
     return "b" if node == "a" else "a"
-
-
-class FakeNetwork:
-    """Routes requests by host name ("a", "b", "witness") to the ASGI apps. Can take a process down or cut links."""
-
-    def __init__(self) -> None:
-        self.apps: dict[str, Callable[..., Awaitable[None]]] = {}
-        self.down: set[str] = set()
-        self.cut: set[tuple[str, str]] = set()
-
-    def isolate(self, node: str) -> None:
-        for peer in self.apps:
-            if peer != node:
-                self.cut |= {(node, peer), (peer, node)}
-
-    def heal(self) -> None:
-        self.cut.clear()
-
-    def transport_from(self, origin: str) -> httpx.AsyncBaseTransport:
-        return _Router(self, origin)
-
-
-class _Router(httpx.AsyncBaseTransport):
-    def __init__(self, network: FakeNetwork, origin: str) -> None:
-        self._network = network
-        self._origin = origin
-
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        target, network = request.url.host, self._network
-        if self._origin in network.down or target in network.down or (self._origin, target) in network.cut:
-            raise httpx.ConnectError(f"{self._origin} cannot reach {target}", request=request)
-        return await httpx.ASGITransport(app=network.apps[target]).handle_async_request(request)
 
 
 class Cluster:
@@ -178,9 +147,13 @@ async def test_standby_takes_over_when_the_primary_dies_with_every_acknowledged_
     await cluster.kill(primary)
     await cluster.wait_for_role(standby, "primary")
 
+    # A new term starts out "catching-up" and goes "solo" once the witness has agreed; under load that takes a moment.
+    async def solo() -> bool:
+        return (await cluster.health(standby))["peer"] == "solo"
+
+    await wait_until(solo, "the new primary to go solo")
     health = await cluster.health(standby)
     assert health["epoch"] > old_epoch  # type: ignore[operator]
-    assert health["peer"] == "solo"
     data = await cluster.data(standby)
     assert all(data.get(key) == key for key in keys)
     assert (await cluster.put(standby, "after")).status_code == 200

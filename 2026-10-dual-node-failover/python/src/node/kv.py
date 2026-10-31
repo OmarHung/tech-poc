@@ -10,7 +10,7 @@ from node.cluster.primary_term import PrimaryTerm
 from node.config import NodeConfig, ReplicationMode
 from node.storage.log_entry import LogEntry
 from shared.errors import InvalidInput, NotFound
-from shared.wire import JsonObject
+from shared.wire import JsonObject, utf16_length
 
 MAX_KEY_LENGTH = 128
 MAX_VALUE_LENGTH = 4096
@@ -41,7 +41,7 @@ def parse_value(body: object) -> str:
     """The value of a PUT body. Counted in UTF-16 code units like .NET's string.Length, so both versions draw the
     line at the same place."""
     value = JsonObject(body).string("value")
-    if value is None or len(value.encode("utf-16-le")) // 2 > MAX_VALUE_LENGTH:
+    if value is None or utf16_length(value) > MAX_VALUE_LENGTH:
         raise InvalidInput(f"value must be a string of at most {MAX_VALUE_LENGTH} characters")
     return value
 
