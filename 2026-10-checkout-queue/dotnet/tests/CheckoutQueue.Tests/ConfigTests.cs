@@ -58,6 +58,7 @@ public sealed class ConfigTests
     [InlineData("PAYMENT_WINDOW_MS", "1.5")]
     [InlineData("TICK_MS", "0")]
     [InlineData("SALE_ID", "has space")]
+    [InlineData("SALE_ID", "demo\n")]
     [InlineData("SALE_ID", "brace}breaks{the-hash-tag")]
     [InlineData("REDIS_URL", " ")]
     [InlineData("HEARTBEAT_TIMEOUT_MS", "2999")]

@@ -6,22 +6,22 @@
   "threads": 32,
   "instances": 2,
   "join": {
-    "requests_per_s": 9353,
+    "requests_per_s": 9529,
     "errors": 0,
-    "n": 46767,
-    "p50_ms": 3.11,
-    "p95_ms": 6.69,
-    "p99_ms": 9.03,
-    "max_ms": 31.48
+    "n": 47644,
+    "p50_ms": 3.09,
+    "p95_ms": 6.48,
+    "p99_ms": 8.62,
+    "max_ms": 18.16
   },
   "poll": {
-    "requests_per_s": 12621,
+    "requests_per_s": 13339,
     "errors": 0,
-    "n": 63104,
-    "p50_ms": 2.22,
-    "p95_ms": 5.49,
-    "p99_ms": 7.54,
-    "max_ms": 20.72
+    "n": 66693,
+    "p50_ms": 2.1,
+    "p95_ms": 5.18,
+    "p99_ms": 7.14,
+    "max_ms": 14.37
   },
-  "waiting_users_supported_at_1s_poll": 12621
+  "waiting_users_supported_at_1s_poll": 13339
 }

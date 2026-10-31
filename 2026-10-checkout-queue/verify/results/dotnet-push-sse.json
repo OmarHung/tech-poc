@@ -11,16 +11,16 @@
   "status_delay": {
     "n": 185,
     "p50_ms": 3,
-    "p95_ms": 14,
-    "p99_ms": 26,
-    "max_ms": 29
+    "p95_ms": 10,
+    "p99_ms": 24,
+    "max_ms": 24
   },
   "app_requests_per_s": 9,
   "events_per_s": 862,
-  "redis_scripts_per_s": 57,
-  "redis_busy_percent": 3.0,
-  "app_cpu_percent": 17.3,
-  "app_rss_mb": 283,
+  "redis_scripts_per_s": 55,
+  "redis_busy_percent": 2.9,
+  "app_cpu_percent": 15.4,
+  "app_rss_mb": 218,
   "errors": [],
   "error_count": 0
 }

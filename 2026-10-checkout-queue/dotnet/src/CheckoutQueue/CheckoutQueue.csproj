@@ -7,8 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Redis\Scripts\*.lua" LogicalName="CheckoutQueue.Scripts.%(Filename).lua" />
-    <EmbeddedResource Include="Demo\index.html" LogicalName="CheckoutQueue.Demo.index.html" />
+    <!-- Shared by every language version of this PoC: the Lua scripts are the domain logic, the page is the demo UI. -->
+    <EmbeddedResource Include="..\..\..\shared\lua\*.lua" LogicalName="CheckoutQueue.Scripts.%(Filename).lua" />
+    <EmbeddedResource Include="..\..\..\shared\demo\index.html" LogicalName="CheckoutQueue.Demo.index.html" />
   </ItemGroup>
 
   <ItemGroup>

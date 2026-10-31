@@ -1,8 +1,15 @@
 # OS / editor files
 .DS_Store
 
+# build output
+rust/target/
+
 # python
+python/.venv/
 __pycache__/
+.pytest_cache/
+.ruff_cache/
+.coverage
 
 # verify run logs (results/ is kept as evidence for the README numbers)
 verify/logs/

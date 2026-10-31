@@ -1,0 +1,124 @@
+{
+  "lang": "rust",
+  "phase": "flash-sale",
+  "passed": 20,
+  "failures": [],
+  "users": 1000,
+  "initial_stock": 200,
+  "elapsed_s": 19.95,
+  "requests": 15369,
+  "requests_per_s": 770,
+  "served_by": {
+    "instance-0": 8139,
+    "instance-1": 7230
+  },
+  "audit": {
+    "initialStock": 200,
+    "stock": 0,
+    "pendingOrders": 0,
+    "pendingQuantity": 0,
+    "paidOrders": 131,
+    "paidQuantity": 200,
+    "expiredOrders": 16,
+    "expiredQuantity": 16,
+    "charges": 131,
+    "duplicateCharges": 0,
+    "usersWithMultipleLiveOrders": 0,
+    "tickets": 1000,
+    "waiting": 797,
+    "active": 2,
+    "oversold": 0,
+    "stockBalanced": true
+  },
+  "ticket_statuses": {
+    "abandoned": 16,
+    "expired": 38,
+    "sold_out": 799,
+    "ordered": 147
+  },
+  "profiles": {
+    "buyer": {
+      "paid": 114,
+      "admission_expired": 2,
+      "sold_out": 484
+    },
+    "double-tab": {
+      "paid": 17,
+      "expired": 1,
+      "sold_out": 82
+    },
+    "idle-after-admit": {
+      "admitted": 25,
+      "sold_out": 75
+    },
+    "leaves": {
+      "left": 100
+    },
+    "never-pays": {
+      "ordered": 16,
+      "expired": 1,
+      "sold_out": 83
+    }
+  },
+  "latency": {
+    "admin": {
+      "n": 1
+    },
+    "checkout": {
+      "n": 190,
+      "p50_ms": 1.68,
+      "p95_ms": 3.58,
+      "p99_ms": 7.39,
+      "max_ms": 8.53
+    },
+    "final-poll": {
+      "n": 1000,
+      "p50_ms": 0.17,
+      "p95_ms": 0.69,
+      "p99_ms": 1.06,
+      "max_ms": 4.53
+    },
+    "health": {
+      "n": 2,
+      "p50_ms": 2.39,
+      "p95_ms": 6.75,
+      "p99_ms": 7.14,
+      "max_ms": 4.0
+    },
+    "join": {
+      "n": 1100,
+      "p50_ms": 2477.36,
+      "p95_ms": 3368.63,
+      "p99_ms": 3417.72,
+      "max_ms": 3439.74
+    },
+    "pay": {
+      "n": 169,
+      "p50_ms": 1.51,
+      "p95_ms": 3.79,
+      "p99_ms": 27.85,
+      "max_ms": 28.58
+    },
+    "poll": {
+      "n": 12907,
+      "p50_ms": 2.31,
+      "p95_ms": 8.26,
+      "p99_ms": 18.96,
+      "max_ms": 2187.73
+    }
+  },
+  "status_delay": {
+    "n": 150,
+    "p50_ms": 552.0,
+    "p95_ms": 3196.25,
+    "p99_ms": 3881.21,
+    "max_ms": 3998.0
+  },
+  "estimate_error": {
+    "n": 137,
+    "median_error_s": -0.6,
+    "median_abs_error_s": 2.8
+  },
+  "cold_connect": false,
+  "join_wall_s": 3.32
+}

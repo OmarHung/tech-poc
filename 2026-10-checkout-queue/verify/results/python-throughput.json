@@ -1,0 +1,27 @@
+{
+  "lang": "python",
+  "phase": "throughput",
+  "passed": 5,
+  "failures": [],
+  "threads": 32,
+  "instances": 2,
+  "join": {
+    "requests_per_s": 12291,
+    "errors": 0,
+    "n": 61453,
+    "p50_ms": 2.43,
+    "p95_ms": 4.49,
+    "p99_ms": 5.99,
+    "max_ms": 14.5
+  },
+  "poll": {
+    "requests_per_s": 15079,
+    "errors": 0,
+    "n": 75395,
+    "p50_ms": 2.02,
+    "p95_ms": 3.03,
+    "p99_ms": 4.38,
+    "max_ms": 12.16
+  },
+  "waiting_users_supported_at_1s_poll": 15079
+}

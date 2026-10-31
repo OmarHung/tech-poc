@@ -1,0 +1,26 @@
+{
+  "lang": "python",
+  "phase": "push-poll",
+  "passed": 3,
+  "failures": [],
+  "mode": "poll",
+  "users": 1000,
+  "window_s": 20.1,
+  "waiting_at_start": 975,
+  "admissions_per_s": 5.0,
+  "status_delay": {
+    "n": 100,
+    "p50_ms": 484,
+    "p95_ms": 515,
+    "p99_ms": 545,
+    "max_ms": 545
+  },
+  "app_requests_per_s": 929,
+  "events_per_s": 0,
+  "redis_scripts_per_s": 968,
+  "redis_busy_percent": 6.9,
+  "app_cpu_percent": 27.2,
+  "app_rss_mb": 117,
+  "errors": [],
+  "error_count": 0
+}

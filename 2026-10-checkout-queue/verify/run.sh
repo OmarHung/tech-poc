@@ -2,12 +2,12 @@
 # Starts a throwaway Redis and two instances of one implementation, then runs the
 # flash-sale scenario (correctness) and the throughput scenario against them.
 #
-# Usage: verify/run.sh <dotnet>
+# Usage: verify/run.sh <dotnet|python|rust>
 # Needs Docker for Redis.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-IMPL_NAME="${1:?usage: verify/run.sh <dotnet>}"
+IMPL_NAME="${1:?usage: verify/run.sh <dotnet|python|rust>}"
 IMPL_DIR="$ROOT/$IMPL_NAME"
 [[ -x "$IMPL_DIR/run.sh" ]] || { echo "unknown implementation: $IMPL_NAME" >&2; exit 2; }
 

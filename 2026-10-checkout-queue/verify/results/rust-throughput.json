@@ -1,0 +1,27 @@
+{
+  "lang": "rust",
+  "phase": "throughput",
+  "passed": 5,
+  "failures": [],
+  "threads": 32,
+  "instances": 2,
+  "join": {
+    "requests_per_s": 11780,
+    "errors": 0,
+    "n": 58901,
+    "p50_ms": 2.52,
+    "p95_ms": 5.19,
+    "p99_ms": 6.74,
+    "max_ms": 12.03
+  },
+  "poll": {
+    "requests_per_s": 15921,
+    "errors": 0,
+    "n": 79604,
+    "p50_ms": 1.76,
+    "p95_ms": 4.24,
+    "p99_ms": 5.74,
+    "max_ms": 13.92
+  },
+  "waiting_users_supported_at_1s_poll": 15921
+}

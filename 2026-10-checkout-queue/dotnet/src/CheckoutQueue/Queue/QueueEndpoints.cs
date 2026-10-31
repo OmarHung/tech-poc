@@ -40,6 +40,6 @@ public static partial class QueueEndpoints
             ? userId
             : throw ApiException.BadRequest("userId must be 1-64 letters, digits, '.', '_', '-' or '@'");
 
-    [GeneratedRegex("^[A-Za-z0-9._@-]{1,64}$")]
+    [GeneratedRegex(@"^[A-Za-z0-9._@-]{1,64}\z")]
     private static partial Regex UserIdPattern();
 }

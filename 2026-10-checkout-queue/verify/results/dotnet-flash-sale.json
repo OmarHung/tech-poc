@@ -5,49 +5,50 @@
   "failures": [],
   "users": 1000,
   "initial_stock": 200,
-  "elapsed_s": 22.75,
-  "requests": 19782,
-  "requests_per_s": 870,
+  "elapsed_s": 16.25,
+  "requests": 13824,
+  "requests_per_s": 851,
   "served_by": {
-    "instance-0": 10346,
-    "instance-1": 9436
+    "instance-0": 7362,
+    "instance-1": 6462
   },
   "audit": {
     "initialStock": 200,
     "stock": 0,
     "pendingOrders": 0,
     "pendingQuantity": 0,
-    "paidOrders": 129,
+    "paidOrders": 132,
     "paidQuantity": 200,
     "expiredOrders": 17,
     "expiredQuantity": 17,
-    "charges": 129,
+    "charges": 132,
     "duplicateCharges": 0,
     "usersWithMultipleLiveOrders": 0,
     "tickets": 1000,
-    "waiting": 822,
-    "active": 0,
+    "waiting": 816,
+    "active": 1,
     "oversold": 0,
     "stockBalanced": true
   },
   "ticket_statuses": {
-    "expired": 25,
-    "abandoned": 7,
-    "sold_out": 822,
-    "ordered": 146
+    "abandoned": 17,
+    "sold_out": 817,
+    "expired": 17,
+    "ordered": 149
   },
   "profiles": {
     "buyer": {
-      "paid": 118,
-      "sold_out": 482
+      "paid": 121,
+      "admission_expired": 2,
+      "sold_out": 477
     },
     "double-tab": {
       "paid": 11,
       "sold_out": 89
     },
     "idle-after-admit": {
-      "admitted": 15,
-      "sold_out": 85
+      "admitted": 12,
+      "sold_out": 88
     },
     "leaves": {
       "left": 100
@@ -62,60 +63,60 @@
       "n": 1
     },
     "checkout": {
-      "n": 191,
-      "p50_ms": 1.81,
-      "p95_ms": 3.67,
-      "p99_ms": 6.13,
-      "max_ms": 6.45
+      "n": 200,
+      "p50_ms": 1.04,
+      "p95_ms": 2.45,
+      "p99_ms": 5.16,
+      "max_ms": 7.61
     },
     "final-poll": {
       "n": 1000,
-      "p50_ms": 0.19,
-      "p95_ms": 0.24,
-      "p99_ms": 0.27,
-      "max_ms": 1.44
+      "p50_ms": 0.23,
+      "p95_ms": 0.39,
+      "p99_ms": 0.52,
+      "max_ms": 1.25
     },
     "health": {
       "n": 2,
-      "p50_ms": 3.33,
-      "p95_ms": 6.79,
-      "p99_ms": 7.1,
-      "max_ms": 4.61
+      "p50_ms": 3.07,
+      "p95_ms": 6.61,
+      "p99_ms": 6.92,
+      "max_ms": 4.38
     },
     "join": {
       "n": 1100,
-      "p50_ms": 1.23,
-      "p95_ms": 814.38,
-      "p99_ms": 846.46,
-      "max_ms": 857.41
+      "p50_ms": 1716.87,
+      "p95_ms": 2602.99,
+      "p99_ms": 2664.31,
+      "max_ms": 2686.79
     },
     "pay": {
-      "n": 164,
-      "p50_ms": 1.63,
-      "p95_ms": 3.27,
-      "p99_ms": 6.73,
-      "max_ms": 7.31
+      "n": 169,
+      "p50_ms": 0.99,
+      "p95_ms": 2.3,
+      "p99_ms": 12.99,
+      "max_ms": 15.46
     },
     "poll": {
-      "n": 17324,
-      "p50_ms": 1.72,
-      "p95_ms": 6.5,
-      "p99_ms": 12.88,
-      "max_ms": 35.14
+      "n": 11352,
+      "p50_ms": 1.24,
+      "p95_ms": 13.55,
+      "p99_ms": 47.04,
+      "max_ms": 802.61
     }
   },
   "status_delay": {
-    "n": 146,
-    "p50_ms": 543.5,
-    "p95_ms": 1496.2,
-    "p99_ms": 1604.58,
-    "max_ms": 1645.0
+    "n": 151,
+    "p50_ms": 542.0,
+    "p95_ms": 3310.8,
+    "p99_ms": 3459.72,
+    "max_ms": 3506.0
   },
   "estimate_error": {
-    "n": 130,
-    "median_error_s": 1.4,
-    "median_abs_error_s": 1.7
+    "n": 133,
+    "median_error_s": -1.3,
+    "median_abs_error_s": 1.4
   },
   "cold_connect": false,
-  "join_wall_s": 0.63
+  "join_wall_s": 1.4
 }

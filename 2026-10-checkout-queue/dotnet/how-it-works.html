@@ -80,6 +80,9 @@
   .panel dl { display: grid; grid-template-columns: 7.5em 1fr; gap: 6px 14px; margin: 8px 0; }
   .panel dt { color: var(--muted); }
   .panel dd { margin: 0; }
+  /* long identifiers (test names, Python paths) must wrap instead of widening the page on narrow screens */
+  .panel dl { grid-template-columns: 7.5em minmax(0, 1fr); }
+  .panel dd, ol.steps p, ol.steps .where, .card p, .card .port, main p, :not(pre) > code { overflow-wrap: anywhere; }
 
   /* step timeline */
   ol.steps { list-style: none; padding: 0; margin: 16px 0; counter-reset: step; }
@@ -144,7 +147,6 @@
 │   ├── CheckoutQueueConfig.cs      所有環境變數和檢查規則
 │   ├── CheckoutQueueHosting.cs     AddCheckoutQueue（註冊服務）、MapCheckoutQueue（掛上端點）
 │   ├── Ids.cs                      ticket／訂單編號：128-bit 隨機值
-<span class="hl">│   ├── Redis/Scripts/*.lua         核心：每個狀態轉換一支腳本，common.lua 會接在每支前面</span>
 │   ├── Redis/SaleRedis.cs          執行腳本、解析回覆（ScriptReply）
 │   ├── Redis/SaleScripts.cs        從組件內嵌資源載入腳本
 │   ├── Queue/                      排隊、輪詢、放行：QueueEndpoints、QueueStore、TicketView
@@ -154,9 +156,13 @@
 │   ├── Admin/AuditStore.cs         對帳：從訂單本身重新加總
 │   ├── Admin/SaleSettings.cs       /admin/config：給操作頁看的活動規則（不含 Redis 位址）
 │   ├── Admin/TicketBoardStore.cs   /admin/tickets：每位顧客目前的號碼牌和訂單（唯讀，不算心跳）
-│   ├── Demo/index.html、DemoPage.cs 操作頁：內嵌在組件裡，由 / 提供，每次請求產生新的 CSP nonce
+│   ├── Demo/DemoPage.cs            操作頁：由 / 提供 shared/demo/index.html，每次請求產生新的 CSP nonce
 │   └── Http/                       錯誤格式、X-Served-By、嚴格 JSON 解析
-└── tests/CheckoutQueue.Tests/      85 個測試：Testcontainers 起真的 Redis，用假時鐘</pre>
+└── tests/CheckoutQueue.Tests/      87 個測試：Testcontainers 起真的 Redis，用假時鐘
+
+三種語言共用（在 PoC 根目錄的 shared/，不屬於任何一個語言版本）：
+<span class="hl">shared/lua/*.lua                    核心：每個狀態轉換一支腳本，common.lua 會接在每支前面</span>
+shared/demo/index.html              操作頁</pre>
 </section>
 
 <section id="flow-section">
@@ -392,7 +398,7 @@
     </li>
     <li style="--c: var(--mono)">
       <div class="who">在 Redis 裡排進隊伍</div>
-      <div class="where"><code>Redis/Scripts/join.lua</code>（前面接著 <code>common.lua</code> 的共用函式）</div>
+      <div class="where"><code>shared/lua/join.lua</code>（前面接著 <code>common.lua</code> 的共用函式）</div>
       <p>「查有沒有 ticket → 沒有就建立」在同一支腳本裡，同一個人同時送 20 次排隊也只會拿到一張（<code>ConcurrencyTests.ParallelJoins_FromTheSameUser_YieldOneTicket</code>）。</p>
 <pre><span class="c">-- One live ticket per user: a refresh, a second tab or a retry gets the same place in line.</span>
 local current = redis.call('GET', key('user', userId))
@@ -414,7 +420,7 @@ return reply('created', ticket_view(newId, now))</pre>
     </li>
     <li style="--c: var(--gw)">
       <div class="who">輪詢：更新心跳、回報順位</div>
-      <div class="where"><code>QueueStore.GetTicketAsync()</code> → <code>Redis/Scripts/ticket.lua</code> → <code>Queue/TicketView.cs</code> 的 <code>TicketView.From()</code></div>
+      <div class="where"><code>QueueStore.GetTicketAsync()</code> → <code>shared/lua/ticket.lua</code> → <code>Queue/TicketView.cs</code> 的 <code>TicketView.From()</code></div>
       <p>腳本更新 <code>lastSeenAt</code>，回傳 ticket 的狀態、順位（<code>ZRANK</code> ＋ 1）和最近的放行速度 <code>admitRate</code>。<code>TicketView.From()</code> 用它們算出預估等待秒數，再加上 <code>pollAfterMs</code>。</p>
       <p>改用 SSE 時，客戶端連 <code>/queue/tickets/{ticketId}/events</code>（<code>Queue/TicketEvents.cs</code> 的 <code>StreamAsync()</code>），之後由 <code>Queue/TicketPushWorker.cs</code> 推送：放行靠 Redis pub/sub 即時推，順位每秒用 <code>QueueStore.WatchAsync()</code>（<code>watch.lua</code>）批次更新一次。</p>
     </li>
@@ -455,7 +461,7 @@ if admitted &gt; 0 then redis.call('PUBLISH', key('admitted'), table.concat(admi
     </li>
     <li style="--c: var(--mono)">
       <div class="who">在 Redis 裡扣庫存、建立訂單</div>
-      <div class="where"><code>Redis/Scripts/checkout.lua</code></div>
+      <div class="where"><code>shared/lua/checkout.lua</code></div>
       <p>防超賣和防重複下單都在這裡：所有檢查和寫入在同一支腳本，中間不會有別的請求插進來。</p>
 <pre><span class="c">-- The ticket is the idempotency key: a double click or a client retry replays the</span>
 <span class="c">-- order this ticket already placed instead of reserving stock a second time.</span>
@@ -483,7 +489,7 @@ return reply('created', order_view(newId, now))</pre>
     </li>
     <li style="--c: var(--mono)">
       <div class="who">付款：扣款紀錄和狀態一起改</div>
-      <div class="where"><code>OrderStore.PayAsync()</code> → <code>Redis/Scripts/pay.lua</code></div>
+      <div class="where"><code>OrderStore.PayAsync()</code> → <code>shared/lua/pay.lua</code></div>
       <p>先看訂單狀態：已付款就回 <code>already_paid</code>，已過期就回 <code>order_expired</code>，剛好過了截止時間就在這裡把庫存放回去（<code>expire_order()</code>）。都不是才記扣款。</p>
       <details><summary>看 pay.lua 的程式碼</summary>
 <pre>if not o.status then return reply('order_not_found') end
@@ -563,7 +569,7 @@ var startedWith = await app.Services.GetRequiredService&lt;SaleRedis&gt;().Initi
 <span class="c">// ……庫存跟設定不同時記警告……</span>
 app.MapCheckoutQueue();
 app.Run();</pre>
-  <p>Lua 腳本在建置時以內嵌資源打包進組件（<code>CheckoutQueue.csproj</code> 的 <code>EmbeddedResource</code>）。<code>SaleScripts</code> 第一次被用到時讀出來，每支前面都接上 <code>common.lua</code>，所以 <code>key()</code>、<code>ticket_view()</code>、<code>expire_order()</code> 這些共用函式每支腳本都能用。</p>
+  <p>Lua 腳本和操作頁放在 PoC 根目錄的 <code>shared/</code>，三種語言版本共用同一份；.NET 版在建置時以內嵌資源打包進組件（<code>CheckoutQueue.csproj</code> 的 <code>EmbeddedResource</code>）。<code>SaleScripts</code> 第一次被用到時讀出來，每支前面都接上 <code>common.lua</code>，所以 <code>key()</code>、<code>ticket_view()</code>、<code>expire_order()</code> 這些共用函式每支腳本都能用。</p>
 </section>
 
 <section id="design">
@@ -598,10 +604,10 @@ end</pre>
       <tr><td>對帳不靠計數器</td><td>從每一張訂單重新加總，檢查「架上 ＋ 保留中 ＋ 已售 = 初始庫存」、扣款紀錄有沒有重複</td><td><code>audit.lua</code>、<code>AuditReport.Oversold</code>、<code>AuditReport.StockBalanced</code></td></tr>
       <tr><td>Redis 斷線不是 500</td><td>Redis 例外一律回 503 <code>unavailable</code>，客戶端知道要重試而不是放棄；定時任務只記警告，下一輪重試</td><td><code>UseApiErrors()</code>、<code>SaleMaintenanceWorker</code></td></tr>
       <tr><td>只聽本機</td><td>只綁 127.0.0.1；<code>/admin/audit</code>、<code>/admin/config</code>、<code>/admin/tickets</code> 沒有驗證，只給 PoC 驗證用</td><td><code>Program.cs</code>、<code>CheckoutQueueHosting.cs</code></td></tr>
-      <tr><td>操作頁不能被塞進別的程式碼</td><td>每次請求產生新的 nonce，CSP 只允許帶這個 nonce 的 script 和 style，也只允許呼叫自己這台；顧客名稱等資料一律用 <code>textContent</code> 放進畫面</td><td><code>Demo/DemoPage.cs</code>、<code>Demo/index.html</code></td></tr>
+      <tr><td>操作頁不能被塞進別的程式碼</td><td>每次請求產生新的 nonce，CSP 只允許帶這個 nonce 的 script 和 style，也只允許呼叫自己這台；顧客名稱等資料一律用 <code>textContent</code> 放進畫面</td><td><code>Demo/DemoPage.cs</code>、<code>shared/demo/index.html</code></td></tr>
       <tr><td>放行用推的，順位每秒更新</td><td>SSE 串流只在放行時即時推（pub/sub），順位和預估每秒批次更新一次，推送頻率不超過 polling。pub/sub 漏掉訊息時，最晚下一秒的批次更新補上；15 秒沒東西送就送一行註解保活</td><td><code>admit.lua</code>、<code>watch.lua</code>、<code>TicketPushWorker</code>、<code>TicketEvents</code></td></tr>
-      <tr><td>每個分頁看到同一條隊伍</td><td>操作頁每秒向自己這台拿 <code>/admin/tickets</code>，通道只從這份資料畫，所以兩台、兩個分頁看到的一樣，也會記下同樣的事件。這個端點唯讀、不算心跳，旁觀的人不會幫顧客續命；心跳只由建立顧客的那個分頁送</td><td><code>tickets.lua</code>、<code>TicketBoardStore.ListAsync()</code>、<code>Demo/index.html</code></td></tr>
-      <tr><td>操作頁只打自己這台</td><td>從 :8092 的分頁對 :8091 加入的顧客下單，請求就打到 :8092，剛好示範跨 instance；不需要開跨網域（CORS）</td><td><code>Demo/index.html</code></td></tr>
+      <tr><td>每個分頁看到同一條隊伍</td><td>操作頁每秒向自己這台拿 <code>/admin/tickets</code>，通道只從這份資料畫，所以兩台、兩個分頁看到的一樣，也會記下同樣的事件。這個端點唯讀、不算心跳，旁觀的人不會幫顧客續命；心跳只由建立顧客的那個分頁送</td><td><code>tickets.lua</code>、<code>TicketBoardStore.ListAsync()</code>、<code>shared/demo/index.html</code></td></tr>
+      <tr><td>操作頁只打自己這台</td><td>從 :8092 的分頁對 :8091 加入的顧客下單，請求就打到 :8092，剛好示範跨 instance；不需要開跨網域（CORS）</td><td><code>shared/demo/index.html</code></td></tr>
     </tbody>
   </table>
 </section>
@@ -610,7 +616,7 @@ end</pre>
   <h2>6. 怎麼跑</h2>
 <pre><span class="c"># 在 dotnet/ 底下</span>
 ./run.sh build                     <span class="c"># dotnet build -c Release</span>
-./run.sh test                      <span class="c"># 85 個測試；需要 Docker（Testcontainers 會起 Redis）</span>
+./run.sh test                      <span class="c"># 87 個測試；需要 Docker（Testcontainers 會起 Redis）</span>
 
 <span class="c"># 手動啟動：先起 Redis，再開兩台 instance（兩個終端機）</span>
 docker run -d --rm --name checkout-queue-redis -p 127.0.0.1:6379:6379 redis:7.4-alpine
@@ -651,7 +657,7 @@ open http://127.0.0.1:8091/ http://127.0.0.1:8092/
 </section>
 
 <footer>
-  實驗設計、實測數字和結論，請看 <a href="../README.md">PoC 的 README</a>。這個 PoC 目前只有 .NET 版。
+  實驗設計、實測數字和結論，請看 <a href="../README.md">PoC 的 README</a>。其他語言版本：<a href="../python/how-it-works.html">Python 版運作說明</a>、<a href="../rust/how-it-works.html">Rust 版運作說明</a>。
 </footer>
 
 </main>

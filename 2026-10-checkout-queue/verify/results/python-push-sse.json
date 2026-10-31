@@ -1,0 +1,26 @@
+{
+  "lang": "python",
+  "phase": "push-sse",
+  "passed": 3,
+  "failures": [],
+  "mode": "sse",
+  "users": 1000,
+  "window_s": 20.1,
+  "waiting_at_start": 945,
+  "admissions_per_s": 9.4,
+  "status_delay": {
+    "n": 190,
+    "p50_ms": 4,
+    "p95_ms": 10,
+    "p99_ms": 47,
+    "max_ms": 47
+  },
+  "app_requests_per_s": 9,
+  "events_per_s": 859,
+  "redis_scripts_per_s": 53,
+  "redis_busy_percent": 2.9,
+  "app_cpu_percent": 9.2,
+  "app_rss_mb": 161,
+  "errors": [],
+  "error_count": 0
+}

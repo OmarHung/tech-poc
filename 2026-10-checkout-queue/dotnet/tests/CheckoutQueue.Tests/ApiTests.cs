@@ -68,6 +68,7 @@ public sealed class ApiTests(RedisFixture redis)
     [Theory]
     [InlineData("POST", "/queue/join", """{"userId":""}""", HttpStatusCode.BadRequest)]
     [InlineData("POST", "/queue/join", """{"userId":"has space"}""", HttpStatusCode.BadRequest)]
+    [InlineData("POST", "/queue/join", """{"userId":"alice\n"}""", HttpStatusCode.BadRequest)]
     [InlineData("POST", "/queue/join", """{"userId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""", HttpStatusCode.BadRequest)]
     [InlineData("POST", "/queue/join", """{"userId":42}""", HttpStatusCode.BadRequest)]
     [InlineData("POST", "/queue/join", "{}", HttpStatusCode.BadRequest)]

@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rust 版運作說明｜結帳排隊機制</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --fg: #1d232b; --muted: #5d6773; --line: #d8dde3; --card: #ffffff; --code-bg: #f0f2f5;
+    --flow: #2563eb; --flow-ink: #ffffff; --fail: #d64545; --idle: #b9c0c8; --hot-bg: #e8f0ff;
+    --gw: #6d5bd0; --mono: #0f8b8d; --svc: #b86e0b; --warn-bg: #fff4dc; --warn-fg: #8a5300;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a; --fg: #e4e7eb; --muted: #9aa4b0; --line: #2d333b; --card: #1a1f26; --code-bg: #20262e;
+      --flow: #6ea0ff; --flow-ink: #0b1220; --fail: #ff7272; --idle: #4a525c; --hot-bg: #1b2a44;
+      --gw: #a596ff; --mono: #4cc7c9; --svc: #f0a948; --warn-bg: #3a2c12; --warn-fg: #f5c46b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); line-height: 1.7;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 1.9rem; line-height: 1.3; margin: 0 0 8px; }
+  h2 { font-size: 1.35rem; margin: 56px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 20px 0 8px; }
+  p { margin: 8px 0; }
+  a { color: var(--flow); }
+  .lead { color: var(--muted); font-size: 1.05rem; margin: 0; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 0; }
+  nav.toc a { text-decoration: none; font-size: .9rem; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--fg); background: var(--card); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .86em; }
+  :not(pre) > code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; line-height: 1.55; margin: 10px 0; }
+  pre .c { color: var(--muted); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 16px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; border-top: 4px solid var(--c, var(--line)); }
+  .card h3 { margin: 0 0 4px; }
+  .card .port { color: var(--muted); font-size: .85rem; }
+  .card p { font-size: .93rem; }
+  .app { --c: var(--gw); } .state { --c: var(--mono); } .store { --c: var(--svc); }
+  .tree { background: var(--card); border: 1px solid var(--line); }
+  .tree .hl { background: var(--warn-bg); color: var(--warn-fg); border-radius: 3px; }
+  .note { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; padding: 10px 14px; font-size: .93rem; margin: 12px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: .92rem; background: var(--card); }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+  th { background: var(--code-bg); font-weight: 600; }
+
+  /* interactive flow */
+  .phase-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .phase-buttons button {
+    font: inherit; font-size: .92rem; cursor: pointer; padding: 6px 14px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--card); color: var(--fg);
+  }
+  .phase-buttons button:hover { border-color: var(--flow); }
+  .phase-buttons button:focus-visible { outline: 3px solid var(--flow); outline-offset: 2px; }
+  .phase-buttons button[aria-pressed="true"] { background: var(--flow); border-color: var(--flow); color: var(--flow-ink); font-weight: 600; }
+  .flow-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  #flow { width: 100%; height: auto; display: block; }
+  #flow text { fill: var(--fg); font-size: 13px; text-anchor: middle; }
+  #flow text.small { font-size: 11px; fill: var(--muted); }
+  #flow text.role { font-size: 11.5px; fill: var(--flow); font-weight: 600; }
+  #flow text.edge-label { font-size: 11px; fill: var(--muted); }
+  #flow text.script { font-size: 11px; fill: var(--flow); font-weight: 600; }
+  #flow text.start { text-anchor: start; }
+  #flow text.end { text-anchor: end; }
+  #flow .node rect { fill: var(--card); stroke: var(--c); stroke-width: 2; rx: 8; }
+  #flow .node.app { --c: var(--gw); } #flow .node.state { --c: var(--mono); } #flow .node.store { --c: var(--svc); } #flow .node.plain { --c: var(--idle); }
+  #flow .node.store > rect { fill: none; stroke-dasharray: 6 4; }
+  #flow .node.hot > rect { fill: var(--hot-bg); stroke: var(--flow); stroke-width: 3; }
+  #flow path.edge { fill: none; stroke: var(--idle); stroke-width: 2; opacity: .45; marker-end: url(#arrow-idle); }
+  #flow path.edge.on { stroke: var(--flow); opacity: 1; stroke-width: 2.6; stroke-dasharray: 7 5; animation: dash 1s linear infinite; marker-end: url(#arrow-on); }
+  #flow path.edge.fail { stroke: var(--fail); opacity: 1; stroke-width: 2.6; stroke-dasharray: 3 5; marker-end: url(#arrow-fail); }
+  @keyframes dash { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { #flow path.edge.on { animation: none; } }
+  .panel { margin-top: 12px; }
+  .panel dl { display: grid; grid-template-columns: 7.5em 1fr; gap: 6px 14px; margin: 8px 0; }
+  .panel dt { color: var(--muted); }
+  .panel dd { margin: 0; }
+  /* long identifiers (test names, Python paths) must wrap instead of widening the page on narrow screens */
+  .panel dl { grid-template-columns: 7.5em minmax(0, 1fr); }
+  .panel dd, ol.steps p, ol.steps .where, .card p, .card .port, main p, :not(pre) > code { overflow-wrap: anywhere; }
+
+  /* step timeline */
+  ol.steps { list-style: none; padding: 0; margin: 16px 0; counter-reset: step; }
+  ol.steps > li { position: relative; padding: 0 0 18px 46px; counter-increment: step; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--c, var(--flow)); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: .9rem;
+  }
+  ol.steps > li::after { content: ""; position: absolute; left: 14px; top: 32px; bottom: 2px; width: 2px; background: var(--line); }
+  ol.steps > li:last-child::after { display: none; }
+  ol.steps .where { font-size: .85rem; color: var(--muted); }
+  ol.steps .who { font-weight: 600; }
+  details { margin: 6px 0; }
+  details summary { cursor: pointer; color: var(--flow); font-size: .9rem; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  footer { margin-top: 64px; color: var(--muted); font-size: .88rem; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>結帳排隊機制｜Rust 版運作說明</h1>
+  <p class="lead">這頁說明 <code>rust/</code> 裡的程式怎麼運作：使用者怎麼排隊、什麼時候被放行，以及下單和付款怎麼保證不超賣、不重複扣款。框架是 axum 0.8 ＋ tokio（Rust edition 2024），透過 redis crate 1.8（<code>ConnectionManager</code>）在 Redis 7.4 上執行和 .NET 版同一份 Lua 腳本。</p>
+  <nav class="toc" aria-label="目錄">
+    <a href="#overview">1. 全貌</a>
+    <a href="#flow-section">2. 互動流程圖</a>
+    <a href="#journey">3. 從排隊到付款的程式碼</a>
+    <a href="#startup">4. 啟動時發生什麼</a>
+    <a href="#design">5. 關鍵設計</a>
+    <a href="#run">6. 怎麼跑</a>
+  </nav>
+</header>
+
+<section id="overview">
+  <h2>1. 全貌：一種程式開很多台，共用一個 Redis</h2>
+  <p>只有一個程式 <code>checkout-queue</code>（一個 Cargo package，裡面是 library ＋ binary）。要撐更多流量就多開幾台，全部指向同一個 Redis、同一個 <code>SALE_ID</code>，就是在服務同一場活動。程式本身不存任何狀態，排隊、名額、庫存、訂單全部在 Redis 裡。HTTP 介面和 .NET 版完全一樣，同一支 <code>verify/run.sh</code> 驗證兩者。</p>
+  <div class="cards">
+    <div class="card app">
+      <h3>checkout-queue（HTTP 端點）</h3>
+      <div class="port">127.0.0.1:8090（<code>PORT</code>，驗證時開兩台）</div>
+      <p>收使用者的請求：排隊、輪詢、下單、付款。先檢查輸入格式，再呼叫對應的 Lua 腳本，最後把腳本的結果翻成 HTTP 狀態碼。排隊狀態除了輪詢，也可以連 <code>/queue/tickets/{id}/events</code> 改由伺服器推送（SSE）。根目錄 <code>/</code> 另外附一個操作頁，可以用滑鼠模擬一群顧客。</p>
+    </div>
+    <div class="card app">
+      <h3>背景迴圈（每台都有）</h3>
+      <div class="port"><code>maintenance::run_every()</code>，每 <code>TICK_MS</code> 一次；<code>TicketPushWorker</code>，每 <code>POLL_INTERVAL_MS</code> 一次 ＋ pub/sub</div>
+      <p>定時任務先釋放逾時未付款的訂單，再從隊頭放行使用者。每台都跑，不需要選出一台負責，因為每一步都是原子的。推送迴圈把狀態變化送給連在這台的 SSE 串流。</p>
+    </div>
+    <div class="card store">
+      <h3>Redis</h3>
+      <div class="port">127.0.0.1:6379（<code>REDIS_URL</code>，格式 <code>host:port</code>）</div>
+      <p>存所有狀態，並執行 Lua 腳本。Redis 一次只執行一支腳本，所以腳本裡的「檢查再寫入」不會被別的請求插隊。</p>
+    </div>
+  </div>
+
+  <h3>資料夾結構</h3>
+<pre class="tree">rust/
+├── Cargo.toml、Cargo.lock          axum 0.8、tokio、redis 1.8（tokio-comp、connection-manager）、serde
+├── run.sh                          ./run.sh build | test | serve
+├── src/
+│   ├── main.rs                     啟動：讀設定、連 Redis、初始化活動、啟動背景迴圈、開始聽
+│   ├── lib.rs                      模組清單；測試直接用這個 library
+│   ├── app.rs                      Sale（所有 store 組在一起）、router()、start_background()、/health
+│   ├── config.rs                   所有環境變數和檢查規則（Config::from_env()、validate()）
+│   ├── clock.rs                    Clock：SystemClock（正式）、ManualClock（測試用的假時鐘）
+│   ├── ids.rs                      ticket／訂單編號：128-bit 隨機值
+│   ├── limits.rs                   啟動時把可開檔案數調到 10,240（Linux 常見 1024、macOS 256，不夠一大群人連線）
+│   ├── sale_redis/                 SaleRedis（連線、執行腳本、訂閱）、ScriptReply（解析回覆）、SCRIPTS（include_str! 載入腳本）
+│   ├── queue/                      排隊、輪詢、放行：routes.rs、store.rs（QueueStore）、view.rs（TicketView）
+│   │                               SSE 推送：events.rs（端點）、streams.rs（TicketStreams）、push.rs（TicketPushWorker）
+│   ├── orders/                     下單、付款、釋放：routes.rs、store.rs（OrderStore）、view.rs（OrderView）
+│   ├── maintenance.rs              SaleMaintenance::run_once()（一輪工作）、run_every()（計時迴圈）
+│   ├── admin/                      audit.rs（對帳）、board.rs（/admin/tickets）、mod.rs（/admin/config 和路由）
+│   ├── demo.rs                     操作頁：由 / 提供 shared/demo/index.html，每次請求產生新的 CSP nonce
+│   └── http/                       錯誤格式（ApiError）、X-Served-By、嚴格 JSON 解析（JsonBody）
+└── tests/integration/              90 個整合測試：自訂 harness，整輪共用一個 Testcontainers Redis，用假時鐘
+                                    （另有 32 個單元測試寫在 src/ 各檔案的 #[cfg(test)] 裡）
+
+三種語言共用（在 PoC 根目錄的 shared/，不屬於任何一個語言版本）：
+<span class="hl">shared/lua/*.lua                    核心：每個狀態轉換一支腳本，common.lua 會接在每支前面</span>
+shared/demo/index.html              操作頁</pre>
+</section>
+
+<section id="flow-section">
+  <h2>2. 互動流程圖：一張 ticket 的一生</h2>
+  <p>點下面的按鈕切換情境。藍色虛線是這個情境實際走的路徑，紅色是斷掉的路徑；Redis 裡亮起來的格子是這次被改到的資料，旁邊的藍字說明改了什麼。線上的藍字是被執行的 Lua 腳本。</p>
+  <div class="phase-buttons" role="group" aria-label="選擇情境">
+    <button type="button" data-phase-btn="join" aria-pressed="true">排隊取號</button>
+    <button type="button" data-phase-btn="poll" aria-pressed="false">輪詢等待</button>
+    <button type="button" data-phase-btn="sse" aria-pressed="false">改用 SSE 推送</button>
+    <button type="button" data-phase-btn="admit" aria-pressed="false">放行</button>
+    <button type="button" data-phase-btn="checkout" aria-pressed="false">下單扣庫存</button>
+    <button type="button" data-phase-btn="double" aria-pressed="false">連點結帳，打到兩台</button>
+    <button type="button" data-phase-btn="pay" aria-pressed="false">付款</button>
+    <button type="button" data-phase-btn="leave" aria-pressed="false">排隊中離開</button>
+    <button type="button" data-phase-btn="lapse" aria-pressed="false">放行後沒下單</button>
+    <button type="button" data-phase-btn="unpaid" aria-pressed="false">下單後沒付款</button>
+  </div>
+
+  <div class="flow-wrap">
+    <svg id="flow" viewBox="0 0 960 440" role="img" aria-labelledby="flow-title flow-desc">
+      <title id="flow-title">排隊流程圖</title>
+      <desc id="flow-desc">使用者的請求輪流打到 instance-0 或 instance-1，兩台的 HTTP 端點和定時任務都在 Redis 上執行 Lua 腳本。Redis 裡有六種資料：waiting 排隊、active 已放行、結束的 ticket、stock 架上庫存、pending 未付款訂單、paid 已付款與扣款紀錄，箭頭是它們之間的移動。</desc>
+      <defs>
+        <marker id="arrow-idle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--idle)"/></marker>
+        <marker id="arrow-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--flow)"/></marker>
+        <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--fail)"/></marker>
+      </defs>
+
+      <g class="node plain" data-node="client"><rect x="16" y="190" width="100" height="60"/><text x="66" y="225">使用者</text></g>
+
+      <g class="node app" data-node="i0">
+        <rect x="150" y="30" width="180" height="170"/>
+        <text x="240" y="54">instance-0</text><text class="small" x="240" y="72">:8091</text>
+        <g class="node plain"><rect x="164" y="84" width="152" height="42"/><text x="240" y="110">HTTP 端點</text></g>
+        <g class="node plain"><rect x="164" y="138" width="152" height="50"/><text class="small" x="240" y="158">maintenance::run_every</text><text class="small" x="240" y="177">每 TICK_MS 一次</text></g>
+      </g>
+      <g class="node app" data-node="i1">
+        <rect x="150" y="240" width="180" height="170"/>
+        <text x="240" y="264">instance-1</text><text class="small" x="240" y="282">:8092</text>
+        <g class="node plain"><rect x="164" y="294" width="152" height="42"/><text x="240" y="320">HTTP 端點</text></g>
+        <g class="node plain"><rect x="164" y="348" width="152" height="50"/><text class="small" x="240" y="368">maintenance::run_every</text><text class="small" x="240" y="387">每 TICK_MS 一次</text></g>
+      </g>
+
+      <g class="node store" data-node="redis">
+        <rect x="440" y="16" width="504" height="408"/>
+        <text x="692" y="38">Redis ・ 一場活動的 key 都在同一個 hash slot</text>
+      </g>
+      <g class="node state" data-node="waiting">
+        <rect x="488" y="56" width="186" height="84"/>
+        <text x="581" y="80">waiting（排隊）</text><text class="small" x="581" y="98">sorted set，依取號順序</text>
+        <text class="role" x="581" y="124" data-role="waiting"></text>
+      </g>
+      <g class="node state" data-node="active">
+        <rect x="488" y="188" width="186" height="84"/>
+        <text x="581" y="212">active（已放行）</text><text class="small" x="581" y="230">依放行截止時間排序</text>
+        <text class="role" x="581" y="256" data-role="active"></text>
+      </g>
+      <g class="node state" data-node="gone">
+        <rect x="488" y="320" width="186" height="84"/>
+        <text x="581" y="344">結束的 ticket</text><text class="small" x="581" y="362">abandoned／expired／sold_out</text>
+        <text class="role" x="581" y="388" data-role="gone"></text>
+      </g>
+      <g class="node state" data-node="stock">
+        <rect x="734" y="56" width="190" height="84"/>
+        <text x="829" y="80">stock（架上庫存）</text><text class="small" x="829" y="98">一個整數</text>
+        <text class="role" x="829" y="124" data-role="stock"></text>
+      </g>
+      <g class="node state" data-node="pending">
+        <rect x="734" y="188" width="190" height="84"/>
+        <text x="829" y="212">pending（未付款訂單）</text><text class="small" x="829" y="230">依付款截止時間排序</text>
+        <text class="role" x="829" y="256" data-role="pending"></text>
+      </g>
+      <g class="node state" data-node="paid">
+        <rect x="734" y="320" width="190" height="84"/>
+        <text x="829" y="344">paid ＋ payments</text><text class="small" x="829" y="362">已付款訂單／扣款紀錄</text>
+        <text class="role" x="829" y="388" data-role="paid"></text>
+      </g>
+
+      <!-- edges are drawn after the boxes so the box fills never hide them -->
+      <path class="edge" data-edge="c-0" d="M116 210 C 135 210, 140 105, 162 105"/>
+      <path class="edge" data-edge="c-1" d="M116 230 C 135 230, 140 315, 162 315"/>
+      <path class="edge" data-edge="e-0" d="M316 105 H438"/>
+      <path class="edge" data-edge="k-0" d="M316 163 H438"/>
+      <path class="edge" data-edge="e-1" d="M316 315 H438"/>
+      <path class="edge" data-edge="k-1" d="M316 373 H438"/>
+      <text class="script" x="377" y="97" data-label="e-0"></text>
+      <text class="script" x="377" y="155" data-label="k-0"></text>
+      <text class="script" x="377" y="307" data-label="e-1"></text>
+      <text class="script" x="377" y="365" data-label="k-1"></text>
+      <path class="edge" data-edge="pub-0" d="M438 132 H332"/>
+      <path class="edge" data-edge="pub-1" d="M438 342 H332"/>
+      <path class="edge" data-edge="s-1" d="M162 325 C 140 325, 132 252, 118 246"/>
+      <text class="script" x="385" y="127" data-label="pub-0"></text>
+      <text class="script" x="385" y="337" data-label="pub-1"></text>
+
+      <path class="edge" data-edge="t-admit" d="M581 140 V186"/>
+      <text class="edge-label start" x="589" y="168">放行</text>
+      <path class="edge" data-edge="t-lapse" d="M581 272 V318"/>
+      <text class="edge-label start" x="589" y="300">逾時</text>
+      <path class="edge" data-edge="t-abandon" d="M488 120 H464 V362 H486"/>
+      <text class="edge-label" x="476" y="241" transform="rotate(-90 476 241)" dy="4">沒在輪詢</text>
+      <path class="edge" data-edge="t-checkout" d="M674 230 H732"/>
+      <text class="edge-label" x="703" y="222">下單</text>
+      <path class="edge" data-edge="t-take" d="M804 140 V186"/>
+      <text class="edge-label end" x="796" y="168">−qty</text>
+      <path class="edge" data-edge="t-release" d="M854 188 V142"/>
+      <text class="edge-label start" x="862" y="168">＋qty 放回</text>
+      <path class="edge" data-edge="t-pay" d="M829 272 V318"/>
+      <text class="edge-label start" x="837" y="300">付款</text>
+    </svg>
+
+    <div class="panel" data-panel="join">
+      <h3>排隊取號：<code>POST /queue/join {"userId":"alice"}</code></h3>
+      <dl>
+        <dt>做了什麼</dt><dd><code>join.lua</code> 把序號 <code>seq</code> 加 1，建立一張 ticket，加到 waiting 的隊尾，並記下「alice 的 ticket 是這張」。回 201，<code>Location</code> 指向這張 ticket，內容有目前順位 <code>position</code>。</dd>
+        <dt>重複排隊</dt><dd>alice 重新整理、開第二個分頁、或網路重試，都會拿到同一張 ticket（200），一個人不會佔兩個位置。只有上一張已經結束（沒輪詢被跳過、放行逾時、訂單沒付款）才會發新的一張，排到最後。</dd>
+        <dt>已經賣完</dt><dd>架上是 0、也沒有未付款訂單時，直接回 409 <code>sold_out</code>，不用排了。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="poll" hidden>
+      <h3>輪詢等待：<code>GET /queue/tickets/{ticketId}</code></h3>
+      <dl>
+        <dt>做了什麼</dt><dd><code>ticket.lua</code> 先更新 ticket 的 <code>lastSeenAt</code>，再回傳狀態、順位和預估等待秒數。回應裡的 <code>pollAfterMs</code> 告訴客戶端多久後再問一次。</dd>
+        <dt>心跳</dt><dd>輪詢就是心跳。之後放行時，<code>lastSeenAt</code> 太舊的人會被跳過（見「排隊中離開」）。</dd>
+        <dt>打到另一台</dt><dd>這次請求打到 instance-1，結果跟打 instance-0 完全一樣，因為 instance 本身不存狀態。</dd>
+        <dt>預估等待</dt><dd><code>TicketView::from_reply()</code> 用「前面人數 ÷ 最近 10 秒的放行速度」算出 <code>estimatedWaitSeconds</code>（<code>queue/view.rs</code> 的 <code>estimate()</code>）。速度太低（每秒不到 0.01 人）時不給預估。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="sse" hidden>
+      <h3>改用 SSE 推送：<code>GET /queue/tickets/{ticketId}/events</code></h3>
+      <dl>
+        <dt>連上時</dt><dd><code>queue/events.rs</code> 的 <code>stream()</code> 先用 <code>TicketStreams::open()</code> 登記這條串流，再讀一次 ticket、送出目前狀態。之後不用再問，有變化伺服器會推。</dd>
+        <dt>放行那一刻</dt><dd>instance-0 的定時任務跑 <code>admit.lua</code>，放行的同時 <code>PUBLISH</code> 被放行的 ticket。兩台都有訂閱；這位使用者的串流連在 instance-1，所以由 instance-1 的 <code>TicketPushWorker</code> 推給他。Rust 版實測放行到使用者知道 p50 2 ms、p95 10 ms，polling 是 462 ms。</dd>
+        <dt>順位</dt><dd>每台每秒用一支批次腳本 <code>watch.lua</code>（<code>QueueStore::watch()</code>，每批最多 500 張）取回所有連線者的狀態，順位有變才推，推送頻率不會超過 polling。</dd>
+        <dt>心跳</dt><dd>串流開著就算在線上：<code>watch.lua</code> 順便更新 <code>lastSeenAt</code>。關掉分頁，串流斷了，心跳就停。</dd>
+        <dt>負載</dt><dd>同樣 1000 人，打到 app 的請求從每秒 931 次降到 9 次，兩台 app 合計 CPU 從 8.8% 降到 3.9%；名額回收得快，每秒放行人數從 4.7 變成 9.4。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="admit" hidden>
+      <h3>放行：兩台的定時任務都在跑</h3>
+      <dl>
+        <dt>做了什麼</dt><dd><code>admit.lua</code> 算出還能放幾人：<code>min(MAX_ACTIVE, 架上庫存) − 已放行人數</code>，然後從 waiting 的隊頭一個一個取出，放進 active，並設定放行截止時間（<code>ADMISSION_WINDOW_MS</code>）。</dd>
+        <dt>兩台同時跑</dt><dd>兩台的計時器各自觸發，但 Redis 一次只跑一支腳本：先跑的放滿名額，後跑的算出來可放 0 人。十台同時跑，結果跟一台一樣（<code>concurrency::parallel_admitters_never_exceed_max_active</code>）。</dd>
+        <dt>看庫存放行</dt><dd>剩 3 件就最多放 3 人進來。放進來卻一定買不到，只是換個方式告訴他「賣完了」。</dd>
+        <dt>順便做的事</dt><dd>同一支腳本也會收回逾時的名額（見「放行後沒下單」），並更新放行速度給預估用。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="checkout" hidden>
+      <h3>下單扣庫存：<code>POST /checkout {"ticketId":"…","quantity":2}</code></h3>
+      <dl>
+        <dt>檢查</dt><dd><code>checkout.lua</code> 依序檢查：ticket 存在、這張 ticket 還沒下過單、狀態是已放行、還沒過放行截止時間、架上庫存夠。</dd>
+        <dt>寫入</dt><dd>全部通過才在同一支腳本裡：庫存 <code>DECRBY 2</code>、建立訂單放進 pending（付款截止時間 <code>PAYMENT_WINDOW_MS</code>）、ticket 標成 <code>ordered</code>、從 active 移出。回 201。</dd>
+        <dt>名額</dt><dd>從 active 移出後，下一輪放行就能再放一個人進來。</dd>
+        <dt>庫存不夠</dt><dd>還有未付款訂單時回 409 <code>insufficient_stock</code>（可能是 0 件），放行期間可以重試；完全賣完才回 409 <code>sold_out</code>。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="double" hidden>
+      <h3>連點結帳，兩個請求分別打到兩台</h3>
+      <dl>
+        <dt>發生什麼</dt><dd>兩台 instance 幾乎同時執行 <code>checkout.lua</code>。Redis 一次只跑一支：先到的建立訂單、扣庫存（201）；後到的看到這張 ticket 已經有 <code>orderId</code>，直接回傳同一張訂單（200），不再扣庫存。</dd>
+        <dt>為什麼</dt><dd>ticket 本身就是 idempotency key，不需要客戶端另外產生。</dd>
+        <dt>數量不同</dt><dd>如果第二次送的數量不一樣，回 409 <code>ticket_used</code>。</dd>
+        <dt>實測</dt><dd>1000 人的搶購情境裡三分之一的人這樣連點，沒有任何人拿到兩張訂單；測試裡 100 個已放行的人各點 3 次（共 300 個請求同時送出），剛好成立 50 張訂單、庫存剛好 0（<code>concurrency::parallel_checkouts_never_oversell_nor_order_twice_per_ticket</code>）。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="pay" hidden>
+      <h3>付款：<code>POST /orders/{orderId}/pay</code></h3>
+      <dl>
+        <dt>做了什麼</dt><dd><code>pay.lua</code> 在同一個原子步驟裡：在 payments 加一筆扣款紀錄、訂單改成 <code>paid</code>、從 pending 移出。回 201。</dd>
+        <dt>重複付款</dt><dd>再送一次時訂單已經是 <code>paid</code>，回 200，不會再加扣款紀錄。所以 201 表示「這次扣的」，200 表示「之前已經扣過」。</dd>
+        <dt>太晚付款</dt><dd>超過付款截止時間就回 410 <code>order_expired</code>，並在同一支腳本裡把庫存放回去。</dd>
+        <dt>注意</dt><dd>付款是模擬的。串真實金流時，扣款發生在外部，不能放進 Redis 腳本，見第 3 節最後的說明。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="leave" hidden>
+      <h3>排隊中離開（關分頁、手機休眠）</h3>
+      <dl>
+        <dt>發生什麼</dt><dd>使用者停止輪詢，<code>lastSeenAt</code> 不再更新。輪到他時，<code>admit.lua</code> 發現已經超過 <code>HEARTBEAT_TIMEOUT_MS</code> 沒輪詢，把 ticket 標成 <code>abandoned</code>，名額直接給下一位。</dd>
+        <dt>為什麼要這樣</dt><dd>不這樣做的話，名額會放給一個已經不在的人，白白等到放行截止時間才收回。</dd>
+        <dt>回來了</dt><dd>他回來再呼叫一次 <code>/queue/join</code>，會拿到新的 ticket，排到最後。</dd>
+        <dt>設定限制</dt><dd><code>HEARTBEAT_TIMEOUT_MS</code> 至少要是 <code>POLL_INTERVAL_MS</code> 的 3 倍，漏掉一兩次輪詢不會被誤判離開；設定違反時 <code>Config::validate()</code> 讓啟動失敗。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="lapse" hidden>
+      <h3>放行後沒下單</h3>
+      <dl>
+        <dt>發生什麼</dt><dd>過了放行截止時間還沒下單。下一輪 <code>admit.lua</code> 先把 active 裡截止時間已過的人標成 <code>expired</code> 並移出，空出的名額在同一輪就放給隊頭的下一位。</dd>
+        <dt>還沒輪到定時任務</dt><dd>在定時任務處理之前，輪詢和下單就已經會把它當成過期（<code>common.lua</code> 的 <code>ticket_status()</code> 依當下時間判斷）。下單回 410 <code>admission_expired</code>。</dd>
+        <dt>之後</dt><dd>可以重新排隊，排到最後。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="unpaid" hidden>
+      <h3>下單後沒付款</h3>
+      <dl>
+        <dt>發生什麼</dt><dd>定時任務每一輪先執行 <code>expire_orders.lua</code>：pending 裡付款截止時間已過的訂單改成 <code>expired</code>，庫存 <code>INCRBY</code> 放回架上。</dd>
+        <dt>接著放行</dt><dd>同一輪接著執行 <code>admit.lua</code>，放回的庫存馬上就能放下一位進來。</dd>
+        <dt>不會放回兩次</dt><dd>付款請求和釋放同時發生時，兩支腳本都只處理還在 <code>pending_payment</code> 的訂單。誰先執行誰處理，另一支看到狀態已經變了就不動（<code>concurrency::payments_racing_the_expiry_sweep_return_each_orders_stock_once</code>）。</dd>
+        <dt>實測</dt><dd>Rust 版跑 1000 人搶 200 件的情境，有 21 筆訂單沒付款，庫存放回後被別人買走，最後 200 件全部付款。</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section id="journey">
+  <h2>3. 從排隊到付款：程式碼怎麼走</h2>
+  <p>以 alice 從排隊一路到付款完成為例。HTTP 端點負責檢查輸入格式；所有會改變狀態的判斷都在 Lua 腳本裡，Rust 只負責呼叫和翻譯結果。路徑都相對於 <code>rust/</code>。</p>
+  <ol class="steps">
+    <li style="--c: var(--gw)">
+      <div class="who">排隊請求進來，先檢查格式</div>
+      <div class="where"><code>src/queue/routes.rs</code> 的 <code>join()</code>；<code>src/http/request.rs</code> 的 <code>JsonBody</code>、<code>valid_user_id()</code></div>
+      <p>axum 內建的 <code>Json</code> 擷取器遇到型別錯會回 422、少 <code>Content-Type</code> 會回 415，而且都是純文字。所以這裡自己寫了 <code>JsonBody</code> 擷取器：不是 JSON、<code>null</code>、型別錯（不做轉型，<code>"quantity":"1"</code> 也算錯）、少欄位，一律變成 400 <code>invalid_request</code> 加上錯誤格式。欄位名稱不分大小寫，和 .NET 版一樣。<code>userId</code> 只接受 1–64 個英數字和 <code>. _ - @</code>，因為它會成為 Redis key 的一部分。</p>
+<pre>async fn join(State(sale): State&lt;Arc&lt;Sale&gt;&gt;, body: JsonBody) -&gt; Result&lt;Response, ApiError&gt; {
+    let user_id = valid_user_id(body.string("userId")?)?;
+    match sale.queue.join(&amp;user_id).await? {
+        JoinResult::Created(view) =&gt; {
+            let location = format!("/queue/tickets/{}", view.ticket_id);
+            Ok((
+                StatusCode::CREATED,
+                [(header::LOCATION, location)],
+                Json(view),
+            )
+                .into_response())
+        }
+        JoinResult::Existing(view) =&gt; Ok(Json(view).into_response()),
+        JoinResult::SoldOut =&gt; Err(ApiError::conflict("sold_out", "sold out")),
+    }
+}</pre>
+    </li>
+    <li style="--c: var(--gw)">
+      <div class="who">Rust 呼叫 Lua 腳本</div>
+      <div class="where"><code>src/queue/store.rs</code> 的 <code>QueueStore::join()</code> → <code>src/sale_redis/mod.rs</code> 的 <code>SaleRedis::run()</code></div>
+      <p><code>join()</code> 產生新的 ticket 編號（<code>ids::new_id()</code>）、從時鐘取得目前時間（<code>SaleRedis::now_ms()</code>），交給 <code>run()</code>。<code>run()</code> 把活動的 key 前綴 <code>cq:{SALE_ID}:</code> 放在第一個參數，其餘照順序接上，用 redis crate 的 <code>Script</code> 送出（先送 <code>EVALSHA</code>，Redis 還沒有這支腳本時自動載入再執行），再用 <code>ScriptReply::parse()</code> 把回覆解析成「結果代碼 ＋ 欄位」。</p>
+<pre>async fn invoke(
+    &amp;self,
+    script: &amp;SaleScript,
+    args: &amp;[ScriptArg&lt;'_&gt;],
+) -&gt; Result&lt;Value, StoreError&gt; {
+    let mut invocation = script.script().prepare_invoke();
+    invocation.arg(&amp;*self.prefix);
+    for arg in args {
+        invocation.arg(arg.to_string());
+    }
+    let mut connection = self.connection.clone();
+    Ok(invocation.invoke_async(&amp;mut connection).await?)
+}</pre>
+    </li>
+    <li style="--c: var(--mono)">
+      <div class="who">在 Redis 裡排進隊伍</div>
+      <div class="where"><code>shared/lua/join.lua</code>（前面接著 <code>common.lua</code> 的共用函式）</div>
+      <p>「查有沒有 ticket → 沒有就建立」在同一支腳本裡，同一個人同時送 20 次排隊也只會拿到一張（<code>concurrency::parallel_joins_from_the_same_user_yield_one_ticket</code>）。</p>
+<pre><span class="c">-- One live ticket per user: a refresh, a second tab or a retry gets the same place in line.</span>
+local current = redis.call('GET', key('user', userId))
+if current and not ended(current) then
+  if redis.call('HGET', key('ticket', current), 'status') == 'waiting' then
+    redis.call('HSET', key('ticket', current), 'lastSeenAt', now)
+  end
+  return reply('existing', ticket_view(current, now))
+end
+
+if sold_out() then return reply('sold_out') end
+
+local seq = redis.call('INCR', key('seq'))
+redis.call('HSET', key('ticket', newId), 'userId', userId, 'seq', seq, 'status', 'waiting', 'joinedAt', now, 'lastSeenAt', now)
+redis.call('ZADD', key('waiting'), seq, newId)
+redis.call('ZADD', key('tickets'), seq, newId)
+redis.call('SET', key('user', userId), newId)
+return reply('created', ticket_view(newId, now))</pre>
+    </li>
+    <li style="--c: var(--gw)">
+      <div class="who">輪詢：更新心跳、回報順位</div>
+      <div class="where"><code>QueueStore::ticket()</code> → <code>shared/lua/ticket.lua</code> → <code>src/queue/view.rs</code> 的 <code>TicketView::from_reply()</code></div>
+      <p>腳本更新 <code>lastSeenAt</code>，回傳 ticket 的狀態、順位（<code>ZRANK</code> ＋ 1）和最近的放行速度 <code>admitRate</code>。<code>TicketView::from_reply()</code> 用它們算出預估等待秒數，再加上 <code>pollAfterMs</code>。序列化交給 serde：欄位 camelCase、狀態值 snake_case、<code>None</code> 的欄位不輸出（<code>skip_serializing_if</code>）。</p>
+      <p>改用 SSE 時，客戶端連 <code>/queue/tickets/{ticketId}/events</code>（<code>src/queue/events.rs</code> 的 <code>stream()</code>），之後由 <code>src/queue/push.rs</code> 的 <code>TicketPushWorker</code> 推送：放行靠 Redis pub/sub 即時推（<code>SaleRedis::subscribe_admitted()</code> 開一條獨立的訂閱連線），順位每秒用 <code>QueueStore::watch()</code>（<code>watch.lua</code>）批次更新一次。</p>
+    </li>
+    <li style="--c: var(--mono)">
+      <div class="who">定時任務：先釋放、再放行</div>
+      <div class="where"><code>src/maintenance.rs</code> 的 <code>run_every()</code> → <code>SaleMaintenance::run_once()</code> → <code>OrderStore::expire_orders()</code>、<code>QueueStore::admit()</code></div>
+      <p>每台每 <code>TICK_MS</code> 跑一次，等待用的是注入的時鐘（<code>Clock::sleep()</code>），測試換成假時鐘就不用真的等。先跑 <code>expire_orders.lua</code> 放回逾時訂單的庫存，再跑 <code>admit.lua</code>，所以放回的庫存同一輪就能放行。Redis 暫時連不上（<code>StoreError::Unavailable</code>）只記警告，下一輪重試；其他錯誤代表程式有 bug，迴圈結束，<code>main.rs</code> 收到後讓程式停下來。</p>
+<pre>pub async fn run_every(
+    maintenance: SaleMaintenance,
+    clock: Arc&lt;dyn Clock&gt;,
+    tick: Duration,
+) -&gt; Result&lt;(), StoreError&gt; {
+    loop {
+        clock.sleep(tick).await;
+        match maintenance.run_once().await {
+            Ok(_) =&gt; {}
+            Err(StoreError::Unavailable(error)) =&gt; {
+                tracing::warn!("maintenance tick failed ({error}); retrying next tick");
+            }
+            Err(bug) =&gt; return Err(bug),
+        }
+    }
+}</pre>
+<pre><span class="c">-- admit.lua：從隊頭放行，跳過沒在輪詢的人</span>
+local free = math.min(maxActive, stock()) - redis.call('ZCARD', key('active'))
+local inLine = redis.call('ZCARD', key('waiting'))
+local admitted, abandoned, scanned = 0, 0, 0
+local admittedIds = {}
+while admitted &lt; free and scanned &lt; maxScan do
+  local head = redis.call('ZPOPMIN', key('waiting'))
+  if #head == 0 then break end
+  scanned = scanned + 1
+  local id = head[1]
+  local ticketKey = key('ticket', id)
+  if now - tonumber(redis.call('HGET', ticketKey, 'lastSeenAt')) &gt; heartbeatMs then
+    redis.call('HSET', ticketKey, 'status', 'abandoned')
+    abandoned = abandoned + 1
+  else
+    local deadline = now + windowMs
+    redis.call('HSET', ticketKey, 'status', 'admitted', 'admittedAt', now, 'admissionExpiresAt', deadline)
+    redis.call('ZADD', key('active'), deadline, id)
+    admitted = admitted + 1
+    admittedIds[admitted] = id
+  end
+end
+
+<span class="c">-- 告訴每台 instance 誰剛被放行，連著 SSE 的人馬上就能收到</span>
+if admitted &gt; 0 then redis.call('PUBLISH', key('admitted'), table.concat(admittedIds, ' ')) end</pre>
+    </li>
+    <li style="--c: var(--gw)">
+      <div class="who">下單：檢查數量，呼叫腳本</div>
+      <div class="where"><code>src/orders/routes.rs</code> 的 <code>checkout()</code> → <code>src/orders/store.rs</code> 的 <code>OrderStore::checkout()</code></div>
+      <p>端點先檢查 <code>ticketId</code> 是 32 位小寫 hex（<code>http::valid_id()</code>）、<code>quantity</code> 是 1 到 <code>MAX_PER_ORDER</code> 的整數。<code>OrderStore::checkout()</code> 產生新的訂單編號，連同付款期限交給 <code>checkout.lua</code>。</p>
+    </li>
+    <li style="--c: var(--mono)">
+      <div class="who">在 Redis 裡扣庫存、建立訂單</div>
+      <div class="where"><code>shared/lua/checkout.lua</code></div>
+      <p>防超賣和防重複下單都在這裡：所有檢查和寫入在同一支腳本，中間不會有別的請求插進來。</p>
+<pre><span class="c">-- The ticket is the idempotency key: a double click or a client retry replays the</span>
+<span class="c">-- order this ticket already placed instead of reserving stock a second time.</span>
+if t.orderId then
+  local placed = tonumber(redis.call('HGET', key('order', t.orderId), 'quantity'))
+  if placed ~= qty then return reply('ticket_used', {'detail', t.orderId}) end
+  return reply('existing', order_view(t.orderId, now))
+end
+<span class="c">-- ……放行逾時、還沒放行的檢查……</span>
+local left = stock()
+if left &lt; qty then
+  if sold_out() then return reply('sold_out') end
+  return reply('insufficient_stock', {'detail', left})
+end
+
+local deadline = now + paymentWindowMs
+redis.call('DECRBY', key('stock'), qty)
+redis.call('HSET', key('order', newId), 'ticketId', ticketId, 'userId', t.userId, 'quantity', qty,
+           'status', 'pending_payment', 'createdAt', now, 'paymentExpiresAt', deadline)
+redis.call('ZADD', key('pending'), deadline, newId)
+redis.call('SADD', key('orders'), newId)
+redis.call('HSET', ticketKey, 'status', 'ordered', 'orderId', newId)
+redis.call('ZREM', key('active'), ticketId)
+return reply('created', order_view(newId, now))</pre>
+    </li>
+    <li style="--c: var(--mono)">
+      <div class="who">付款：扣款紀錄和狀態一起改</div>
+      <div class="where"><code>src/orders/routes.rs</code> 的 <code>pay()</code> → <code>OrderStore::pay()</code> → <code>shared/lua/pay.lua</code></div>
+      <p>先看訂單狀態：已付款就回 <code>already_paid</code>，已過期就回 <code>order_expired</code>，剛好過了截止時間就在這裡把庫存放回去（<code>expire_order()</code>）。都不是才記扣款。</p>
+      <details><summary>看 pay.lua 的程式碼</summary>
+<pre>if not o.status then return reply('order_not_found') end
+if o.status == 'paid' then return reply('already_paid', order_view(id, now)) end
+if o.status == 'expired' then return reply('order_expired', order_view(id, now)) end
+
+if now &gt;= tonumber(o.paymentExpiresAt) then
+  expire_order(id, tonumber(o.quantity))
+  return reply('order_expired', order_view(id, now))
+end
+
+redis.call('RPUSH', key('payments'), id)
+redis.call('HSET', orderKey, 'status', 'paid', 'paidAt', now)
+redis.call('ZREM', key('pending'), id)
+return reply('paid', order_view(id, now))</pre>
+      </details>
+    </li>
+    <li style="--c: var(--gw)">
+      <div class="who">把腳本結果翻成 HTTP 回應</div>
+      <div class="where"><code>OrderStore::checkout()</code> 把結果代碼對應成 <code>CheckoutResult</code>；<code>orders/routes.rs</code> 再對應成狀態碼；<code>src/http/error.rs</code> 的 <code>ApiError</code> 輸出錯誤</div>
+      <p>每個結果代碼都是 enum 的一個 variant，<code>match</code> 沒寫到就編譯不過。成功的結果用 <code>OrderView::from_reply()</code> 組成 JSON；錯誤一律是 <code>{"error": "…", "code": "…"}</code>。Redis 錯誤包成 <code>StoreError::Unavailable</code>，在 <code>impl From&lt;StoreError&gt; for ApiError</code> 變成 503；腳本回了程式看不懂的東西（<code>StoreError::Unexpected</code>）是 bug，回 500。每個回應都由 <code>http::served_by()</code>（在 <code>app::router()</code> 用 <code>map_response_with_state</code> 掛上）加上 <code>X-Served-By</code>，標示哪台回的。</p>
+    </li>
+  </ol>
+
+  <h3>每種狀況在哪裡被擋下</h3>
+  <table>
+    <thead><tr><th>狀況</th><th>在哪裡被擋</th><th>回應</th></tr></thead>
+    <tbody>
+      <tr><td>不是 JSON、<code>Content-Type</code> 不對、型別錯（例如 <code>"quantity":"1"</code>）、少欄位</td><td><code>JsonBody::from_request()</code>、<code>JsonBody::string()</code>／<code>integer()</code>、各端點的欄位檢查</td><td>400 <code>invalid_request</code></td></tr>
+      <tr><td><code>userId</code> 格式不對</td><td><code>valid_user_id()</code></td><td>400</td></tr>
+      <tr><td><code>ticketId</code>／<code>orderId</code> 不是 32 位小寫 hex（body 或路徑）</td><td><code>valid_id()</code>、<code>path_id()</code></td><td>400</td></tr>
+      <tr><td><code>quantity</code> 不是 1 到 <code>MAX_PER_ORDER</code> 的整數</td><td><code>orders/routes.rs</code> 的 <code>checkout()</code></td><td>400</td></tr>
+      <tr><td>ticket 或訂單不存在</td><td><code>ticket.lua</code>、<code>checkout.lua</code>、<code>order.lua</code>、<code>pay.lua</code></td><td>404 <code>ticket_not_found</code>／<code>order_not_found</code></td></tr>
+      <tr><td>還沒輪到就下單</td><td><code>checkout.lua</code></td><td>403 <code>not_admitted</code></td></tr>
+      <tr><td>放行逾時才下單</td><td><code>checkout.lua</code></td><td>410 <code>admission_expired</code></td></tr>
+      <tr><td>同一張 ticket 換數量再下單</td><td><code>checkout.lua</code></td><td>409 <code>ticket_used</code></td></tr>
+      <tr><td>架上不夠，但還有未付款訂單</td><td><code>checkout.lua</code></td><td>409 <code>insufficient_stock</code>（放行期間可重試）</td></tr>
+      <tr><td>完全賣完</td><td><code>join.lua</code>、<code>checkout.lua</code></td><td>409 <code>sold_out</code></td></tr>
+      <tr><td>付款逾時</td><td><code>pay.lua</code></td><td>410 <code>order_expired</code></td></tr>
+      <tr><td>Redis 連不上或逾時</td><td><code>impl From&lt;StoreError&gt; for ApiError</code>、<code>/health</code>（<code>SaleRedis::ping()</code>）</td><td>503 <code>unavailable</code></td></tr>
+      <tr><td>腳本回覆的格式或結果代碼看不懂（bug）</td><td><code>ScriptReply::parse()</code>、<code>ScriptReply::unexpected()</code>、<code>TicketStatus::parse()</code></td><td>500 <code>internal</code></td></tr>
+    </tbody>
+  </table>
+  <p class="note">付款是模擬的：扣款紀錄和狀態變更在同一支腳本裡，所以天生只會扣一次。串真實金流時扣款發生在外部，要改成「待付款 → 付款中 → 已付款」，把訂單編號當成金流商的 idempotency key，並且要對帳處理卡在「付款中」的訂單。</p>
+</section>
+
+<section id="startup">
+  <h2>4. 啟動時發生什麼</h2>
+  <div class="cols">
+    <div class="card app">
+      <h3>1. 讀設定、連 Redis</h3>
+      <p><code>Config::from_env()</code> 讀所有環境變數：數字只接受純數字（沒有正負號、小數點）且要在範圍內、<code>SALE_ID</code> 有奇怪字元、<code>INSTANCE_NAME</code> 不能放進 header、心跳逾時小於輪詢間隔 3 倍，都會直接啟動失敗，訊息裡寫出是哪個變數。接著 <code>limits::raise_open_file_limit()</code> 把可開檔案數的軟上限調到 10,240：.NET 執行環境會自己調，Rust 標準函式庫不會，不調的話軟上限 256 時 600 條連線只有 247 條接得進來。再來 <code>SaleRedis::connect()</code> 建立 <code>ConnectionManager</code>（斷線會自動重連），連不上也是啟動失敗。</p>
+    </div>
+    <div class="card app">
+      <h3>2. 組起所有 store</h3>
+      <p><code>Sale::new()</code> 建立 <code>QueueStore</code>、<code>OrderStore</code>、<code>AuditStore</code>、<code>TicketBoardStore</code>、<code>SaleMaintenance</code>、<code>TicketStreams</code>，全部共用同一個 <code>SaleRedis</code>（複製只是多一個參照，底下是同一條多工連線），整個 <code>Sale</code> 用 <code>Arc</code> 當 axum 的 state。</p>
+    </div>
+    <div class="card store">
+      <h3>3. 初始化活動</h3>
+      <p><code>SaleRedis::initialize()</code> 執行 <code>init.lua</code>：只有活動第一次啟動才設定庫存（<code>SETNX</code>）。後啟動的 instance 或重啟時沿用目前的庫存，<code>INITIAL_STOCK</code> 不一樣就記一筆警告。</p>
+    </div>
+    <div class="card app">
+      <h3>4. 先訂閱，再開始聽</h3>
+      <p><code>app::start_background()</code> 先用 <code>SaleRedis::subscribe_admitted()</code> 訂閱放行通知（在開始接請求之前，不會漏掉），再把四個迴圈放進同一個 <code>JoinSet</code>：訂閱監聽、每 <code>POLL_INTERVAL_MS</code> 的刷新計時、推送、定時任務。然後綁 127.0.0.1 開始服務 <code>app::router()</code>。任何一個背景迴圈結束（只有遇到 bug 才會），<code>tokio::select!</code> 就讓程式停下來。</p>
+    </div>
+  </div>
+<pre><span class="c">// src/main.rs（節錄）</span>
+let config = Config::from_env()?;
+let clock: Arc&lt;dyn Clock&gt; = Arc::new(SystemClock);
+let redis = SaleRedis::connect(&amp;config.redis_connection_url(), &amp;config.sale_id, clock)
+    .await
+    .map_err(|error| format!("cannot connect to Redis at {}: {error}", config.redis_url))?;
+let sale = Sale::new(config, redis)?;
+let config = Arc::clone(&amp;sale.config);
+
+let started_with = sale.redis.initialize(config.initial_stock).await?;
+<span class="c">// ……庫存跟設定不同時記警告……</span>
+
+let mut background = app::start_background(&amp;sale, true).await;
+let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, config.port)).await?;
+<span class="c">// ……</span>
+tokio::select! {
+    served = axum::serve(listener, app::router(sale)) =&gt; Ok(served?),
+    Some(stopped) = background.join_next() =&gt; match stopped {
+        Ok(Ok(())) =&gt; Err("a background loop stopped".into()),
+        Ok(Err(bug)) =&gt; Err(format!("a background loop failed: {bug}").into()),
+        Err(panicked) =&gt; Err(format!("a background loop panicked: {panicked}").into()),
+    },
+}</pre>
+  <p>Lua 腳本和操作頁放在 PoC 根目錄的 <code>shared/</code>，三種語言版本共用同一份；Rust 版在編譯時用 <code>include_str!</code> 直接編進執行檔（<code>src/sale_redis/scripts.rs</code> 的 <code>lua!</code> 巨集、<code>src/demo.rs</code> 的 <code>PAGE</code>），改了共用檔案重新編譯就會帶進去。<code>SCRIPTS</code> 第一次被用到時組好，每支前面都接上 <code>common.lua</code>，所以 <code>key()</code>、<code>ticket_view()</code>、<code>expire_order()</code> 這些共用函式每支腳本都能用。</p>
+</section>
+
+<section id="design">
+  <h2>5. 關鍵設計</h2>
+
+  <h3>每個狀態轉換一支 Lua 腳本</h3>
+  <p>超賣和重複扣款的根源都是「檢查」和「寫入」之間被別人插隊。這裡每個狀態轉換（排隊、放行、下單、付款、釋放）都寫成一支腳本，Redis 一次只執行一支，所以不需要鎖、不需要重試，也不需要選主。代價是一場活動的資料必須在同一個 Redis 執行緒上，這就是承載上限（見 README 的實驗紀錄）。所有 key 都用 <code>cq:{SALE_ID}:</code> 當前綴，大括號是 Redis Cluster 的 hash tag，保證同一場活動的 key 落在同一個 slot。腳本是三種語言共用的，Rust 版一行都沒改。</p>
+
+  <h3>放行規則：名額和庫存取小的</h3>
+<pre>可放行人數 = min(MAX_ACTIVE, 架上庫存) − 已放行、還沒下單的人數</pre>
+  <p><code>MAX_ACTIVE</code> 就是削峰的旋鈕：外面排了多少人都不影響，同時在結帳的最多就這麼多。被未付款訂單保留的庫存不算架上庫存，等訂單逾時放回，下一輪就會再放人。</p>
+
+  <h3>截止時間當下就算，定時任務只是收尾</h3>
+  <p>放行和付款的截止時間一到，輪詢、下單、付款就會當成已過期，不用等定時任務。所以就算定時任務慢了或暫時連不上 Redis，使用者看到的狀態也和實際能做的事一致。</p>
+<pre><span class="c">-- common.lua：狀態依當下時間判斷</span>
+local function ticket_status(t, now)
+  if t.status == 'admitted' and now &gt;= tonumber(t.admissionExpiresAt) then return 'expired' end
+  if (t.status == 'waiting' or t.status == 'admitted') and sold_out() then return 'sold_out' end
+  return t.status
+end</pre>
+
+  <h3>時間由各台 instance 傳入，等待也走同一個時鐘</h3>
+  <p>腳本不自己讀 Redis 的時鐘，而是由 Rust 從 <code>Clock</code>（<code>src/clock.rs</code>）取得目前時間傳進去。正式執行用 <code>SystemClock</code>，測試用 <code>ManualClock</code>：<code>advance()</code> 把時間往前推，同時叫醒所有等到時間的 <code>sleep()</code>。兩個背景迴圈（定時任務、SSE 每秒刷新）也用 <code>Clock::sleep()</code> 等，所以「推一秒，串流就收到新順位」這種測試也不用真的等。代價是各台 instance 的時鐘要同步（NTP）。時鐘差幾毫秒時，<code>admit.lua</code> 算放行速度的時間範圍至少取 1 秒，不會因此出錯（<code>concurrency::admitter_with_a_clock_slightly_behind_still_completes_its_pass</code>）。</p>
+
+  <h3>Redis 連線：會自己重連，失敗要快</h3>
+  <p>指令走 redis crate 的 <code>ConnectionManager</code>：一條多工連線，所有請求並行送出（和 .NET 的 multiplexer 一樣），斷線後下一個指令觸發重連。設定刻意偏向「快點失敗」：連線逾時 2 秒、指令逾時 5 秒、重連只重試 2 次，Redis 掛掉時請求很快拿到 503，下一個請求再試。pub/sub 用另外一條專用連線；斷了就由 <code>listen_for_admissions()</code> 每 <code>POLL_INTERVAL_MS</code> 重新訂閱一次，這段期間放行靠每秒刷新補上，只是慢一點。測試用一個可以剪斷、再接回的 TCP proxy 驗證這幾件事（<code>api::redis_down_is_503_not_a_crash_and_recovers</code>、<code>ticket_events::admissions_are_pushed_again_once_the_subscription_comes_back</code>、<code>maintenance_worker::worker_keeps_ticking_through_a_redis_outage</code>）。</p>
+
+  <h3>SSE：每條串流只留最新的一個畫面</h3>
+  <p><code>TicketStreams</code> 為每條串流開一個 tokio <code>watch</code> channel，裡面永遠只有最新的一個 <code>TicketView</code>，客戶端慢的時候舊的直接被蓋掉，不會越積越多。回應本體是 <code>stream::unfold</code> 產生的串流：先送目前狀態，之後每收到一個和上次不同的畫面就送一個事件，15 秒沒東西就送 <code>: keep-alive</code>，狀態到終局（<code>TicketStatus::is_final()</code>）就結束。客戶端斷線時 hyper 丟掉這個串流，<code>TicketStream</code> 的 <code>Drop</code> 就把它從登記表移除。</p>
+
+  <h3>其他</h3>
+  <table>
+    <thead><tr><th>設計</th><th>做法</th><th>在哪裡</th></tr></thead>
+    <tbody>
+      <tr><td>ticket 就是 idempotency key</td><td>同一張 ticket 重送下單回同一張訂單，客戶端不用另外產生 key</td><td><code>checkout.lua</code></td></tr>
+      <tr><td>編號不能被猜到</td><td>ticket 和訂單編號都是 128-bit 隨機值（32 位小寫 hex），直接取作業系統的 CSPRNG（<code>getrandom</code>）。拿到 ticket 就能結帳，所以不能從別人的編號推出來</td><td><code>ids::new_id()</code></td></tr>
+      <tr><td>預估等待時間</td><td>前面人數 ÷ 最近 10 秒的平均放行速度，從開始有人排隊起算</td><td><code>admit.lua</code> 第 3 段、<code>TicketView::from_reply()</code></td></tr>
+      <tr><td>對帳不靠計數器</td><td>從每一張訂單重新加總，檢查「架上 ＋ 保留中 ＋ 已售 = 初始庫存」、扣款紀錄有沒有重複</td><td><code>audit.lua</code>、<code>AuditReport</code> 的 <code>oversold</code>、<code>stock_balanced</code></td></tr>
+      <tr><td>Redis 斷線不是 500</td><td>Redis 錯誤一律回 503 <code>unavailable</code>，客戶端知道要重試而不是放棄；背景迴圈只記警告，下一輪重試</td><td><code>src/http/error.rs</code>、<code>maintenance::run_every()</code>、<code>queue/push.rs</code> 的 <code>consume()</code></td></tr>
+      <tr><td>只聽本機</td><td>只綁 127.0.0.1；<code>/admin/audit</code>、<code>/admin/config</code>、<code>/admin/tickets</code> 沒有驗證，只給 PoC 驗證用</td><td><code>src/main.rs</code>、<code>src/admin/mod.rs</code></td></tr>
+      <tr><td>操作頁不能被塞進別的程式碼</td><td>每次請求產生新的 nonce，CSP 只允許帶這個 nonce 的 script 和 style，也只允許呼叫自己這台；顧客名稱等資料一律用 <code>textContent</code> 放進畫面</td><td><code>src/demo.rs</code>、<code>shared/demo/index.html</code></td></tr>
+      <tr><td>放行用推的，順位每秒更新</td><td>SSE 串流只在放行時即時推（pub/sub），順位和預估每秒批次更新一次，推送頻率不超過 polling。pub/sub 漏掉訊息時，最晚下一秒的批次更新補上</td><td><code>admit.lua</code>、<code>watch.lua</code>、<code>TicketPushWorker</code>、<code>queue/events.rs</code></td></tr>
+      <tr><td>每個分頁看到同一條隊伍</td><td>操作頁每秒向自己這台拿 <code>/admin/tickets</code>，通道只從這份資料畫。這個端點唯讀、不算心跳，旁觀的人不會幫顧客續命</td><td><code>tickets.lua</code>、<code>TicketBoardStore::list()</code>、<code>shared/demo/index.html</code></td></tr>
+      <tr><td>一輪測試只起一個 Redis</td><td>Rust 內建的測試執行器沒有「全部跑完之後」的掛勾，所以整合測試用 libtest-mimic 自訂 harness：第一個測試啟動容器，全部跑完由 <code>main()</code> 刪掉。每個測試有自己的 tokio runtime 和隨機 <code>SALE_ID</code>，彼此看不到對方的資料</td><td><code>tests/integration/main.rs</code>、<code>tests/integration/support.rs</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="run">
+  <h2>6. 怎麼跑</h2>
+<pre><span class="c"># 在 rust/ 底下</span>
+./run.sh build                     <span class="c"># cargo build --release</span>
+./run.sh test                      <span class="c"># cargo test：32 個單元測試 ＋ 90 個整合測試；需要 Docker（Testcontainers 會起 Redis）</span>
+
+<span class="c"># 手動啟動（要先 ./run.sh build）：先起 Redis，再開兩台 instance（兩個終端機）</span>
+docker run -d --rm --name checkout-queue-redis -p 127.0.0.1:6379:6379 redis:7.4-alpine
+PORT=8091 INSTANCE_NAME=instance-0 INITIAL_STOCK=10 ./run.sh serve
+PORT=8092 INSTANCE_NAME=instance-1 INITIAL_STOCK=10 ./run.sh serve
+
+<span class="c"># 打打看：排隊在一台、其他請求打另一台</span>
+curl -s -X POST http://127.0.0.1:8091/queue/join -H 'Content-Type: application/json' -d '{"userId":"alice"}'
+curl -s http://127.0.0.1:8092/queue/tickets/&lt;ticketId&gt;
+curl -s -X POST http://127.0.0.1:8091/checkout -H 'Content-Type: application/json' -d '{"ticketId":"&lt;ticketId&gt;","quantity":1}'
+curl -s -X POST http://127.0.0.1:8092/orders/&lt;orderId&gt;/pay
+curl -s http://127.0.0.1:8091/admin/audit
+curl -N http://127.0.0.1:8092/queue/tickets/&lt;ticketId&gt;/events   <span class="c"># 改用 SSE：一直開著，有變化就印出新的一行</span>
+
+<span class="c"># 或用操作頁：兩個分頁分別打開兩台，加顧客、點下單和付款</span>
+open http://127.0.0.1:8091/ http://127.0.0.1:8092/
+
+<span class="c"># 或者一次跑完自動驗證（在 PoC 根目錄）：起 Redis 容器 ＋ 兩台 instance，跑搶購情境、吞吐量、polling 與 SSE 對照</span>
+../verify/run.sh rust</pre>
+
+  <table>
+    <thead><tr><th>環境變數</th><th>預設</th><th>說明</th></tr></thead>
+    <tbody>
+      <tr><td><code>PORT</code></td><td>8090</td><td>只綁 127.0.0.1</td></tr>
+      <tr><td><code>REDIS_URL</code></td><td><code>127.0.0.1:6379</code></td><td><code>host:port</code>，或完整的 <code>redis://</code> URL（例如帶密碼時）</td></tr>
+      <tr><td><code>INSTANCE_NAME</code></td><td><code>checkout-queue</code></td><td>放進 <code>X-Served-By</code></td></tr>
+      <tr><td><code>SALE_ID</code></td><td><code>demo</code></td><td>同一個 Redis、同一個 <code>SALE_ID</code> 的 instance 服務同一場活動。只能用英數字、<code>-</code>、<code>_</code></td></tr>
+      <tr><td><code>INITIAL_STOCK</code></td><td>100</td><td>只有活動第一次啟動時生效</td></tr>
+      <tr><td><code>MAX_PER_ORDER</code></td><td>2</td><td>每筆訂單最多幾件</td></tr>
+      <tr><td><code>MAX_ACTIVE</code></td><td>50</td><td>同時在結帳的人數上限</td></tr>
+      <tr><td><code>ADMISSION_WINDOW_MS</code></td><td>120000</td><td>放行後多久內要下單</td></tr>
+      <tr><td><code>PAYMENT_WINDOW_MS</code></td><td>300000</td><td>下單後多久內要付款</td></tr>
+      <tr><td><code>HEARTBEAT_TIMEOUT_MS</code></td><td>15000</td><td>多久沒輪詢算離開；至少要是 <code>POLL_INTERVAL_MS</code> 的 3 倍</td></tr>
+      <tr><td><code>POLL_INTERVAL_MS</code></td><td>1000</td><td>回應裡的 <code>pollAfterMs</code>；SSE 也用它決定多久批次更新一次順位</td></tr>
+      <tr><td><code>TICK_MS</code></td><td>200</td><td>定時任務間隔</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  實驗設計、實測數字和結論，請看 <a href="../README.md">PoC 的 README</a>。其他語言版本：<a href="../dotnet/how-it-works.html">.NET 版運作說明</a>、<a href="../python/how-it-works.html">Python 版運作說明</a>。
+</footer>
+
+</main>
+<script>
+  const SCENARIOS = {
+    join: {
+      on: ["c-0", "e-0"], fail: [], hot: ["waiting"],
+      labels: { "e-0": "join.lua" },
+      roles: { waiting: "隊尾加一張 ticket" },
+    },
+    poll: {
+      on: ["c-1", "e-1"], fail: [], hot: ["waiting"],
+      labels: { "e-1": "ticket.lua" },
+      roles: { waiting: "更新 lastSeenAt、算順位" },
+    },
+    sse: {
+      on: ["k-0", "t-admit", "pub-0", "pub-1", "s-1"], fail: [], hot: ["waiting", "active"],
+      labels: { "k-0": "admit.lua", "pub-0": "PUBLISH", "pub-1": "PUBLISH" },
+      roles: { waiting: "從隊頭取出", active: "放行，同時廣播" },
+    },
+    admit: {
+      on: ["k-0", "k-1", "t-admit"], fail: [], hot: ["waiting", "active", "stock"],
+      labels: { "k-0": "admit.lua", "k-1": "admit.lua" },
+      roles: { waiting: "從隊頭取出", active: "最多 min(MAX_ACTIVE, 庫存)", stock: "只讀：決定能放幾人" },
+    },
+    checkout: {
+      on: ["c-0", "e-0", "t-checkout", "t-take"], fail: [], hot: ["active", "stock", "pending"],
+      labels: { "e-0": "checkout.lua" },
+      roles: { active: "移出，名額空出來", stock: "DECRBY qty", pending: "新訂單，開始計時" },
+    },
+    double: {
+      on: ["c-0", "c-1", "e-0", "e-1", "t-checkout", "t-take"], fail: [], hot: ["active", "stock", "pending"],
+      labels: { "e-0": "checkout.lua", "e-1": "checkout.lua" },
+      roles: { active: "移出一次", stock: "只扣一次", pending: "只有一張訂單" },
+    },
+    pay: {
+      on: ["c-1", "e-1", "t-pay"], fail: [], hot: ["pending", "paid"],
+      labels: { "e-1": "pay.lua" },
+      roles: { pending: "移出", paid: "扣款紀錄 ＋ 狀態 paid" },
+    },
+    leave: {
+      on: ["k-0", "k-1", "t-abandon"], fail: ["c-0"], hot: ["waiting", "gone"],
+      labels: { "k-0": "admit.lua", "k-1": "admit.lua" },
+      roles: { waiting: "輪到時心跳太舊", gone: "abandoned" },
+    },
+    lapse: {
+      on: ["k-0", "k-1", "t-lapse", "t-admit"], fail: [], hot: ["active", "gone", "waiting"],
+      labels: { "k-0": "admit.lua", "k-1": "admit.lua" },
+      roles: { active: "過了截止時間，移出", gone: "expired", waiting: "名額給下一位" },
+    },
+    unpaid: {
+      on: ["k-0", "k-1", "t-release", "t-admit"], fail: [], hot: ["pending", "stock", "active"],
+      labels: { "k-0": "expire_orders.lua", "k-1": "expire_orders.lua" },
+      roles: { pending: "逾時，改成 expired", stock: "INCRBY qty 放回", active: "同一輪再放一人" },
+    },
+  };
+
+  function showScenario(id) {
+    const s = SCENARIOS[id];
+    document.querySelectorAll("#flow [data-edge]").forEach((edge) => {
+      edge.classList.toggle("on", s.on.includes(edge.dataset.edge));
+      edge.classList.toggle("fail", s.fail.includes(edge.dataset.edge));
+    });
+    document.querySelectorAll("#flow [data-node]").forEach((node) => {
+      node.classList.toggle("hot", s.hot.includes(node.dataset.node));
+    });
+    document.querySelectorAll("#flow [data-label]").forEach((label) => { label.textContent = s.labels[label.dataset.label] ?? ""; });
+    document.querySelectorAll("#flow [data-role]").forEach((label) => { label.textContent = s.roles[label.dataset.role] ?? ""; });
+    document.querySelectorAll("[data-panel]").forEach((panel) => { panel.hidden = panel.dataset.panel !== id; });
+    document.querySelectorAll("[data-phase-btn]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.phaseBtn === id));
+    });
+  }
+
+  document.querySelectorAll("[data-phase-btn]").forEach((button) => {
+    button.addEventListener("click", () => showScenario(button.dataset.phaseBtn));
+  });
+  showScenario("join");
+</script>
+</body>
+</html>

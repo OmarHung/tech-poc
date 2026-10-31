@@ -1,0 +1,26 @@
+{
+  "lang": "rust",
+  "phase": "push-poll",
+  "passed": 3,
+  "failures": [],
+  "mode": "poll",
+  "users": 1000,
+  "window_s": 20.1,
+  "waiting_at_start": 975,
+  "admissions_per_s": 5.0,
+  "status_delay": {
+    "n": 100,
+    "p50_ms": 460,
+    "p95_ms": 542,
+    "p99_ms": 559,
+    "max_ms": 559
+  },
+  "app_requests_per_s": 929,
+  "events_per_s": 0,
+  "redis_scripts_per_s": 965,
+  "redis_busy_percent": 6.5,
+  "app_cpu_percent": 10.5,
+  "app_rss_mb": 46,
+  "errors": [],
+  "error_count": 0
+}

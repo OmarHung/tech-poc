@@ -96,6 +96,6 @@ public sealed partial record CheckoutQueueConfig
             ? fallback
             : TimeSpan.FromMilliseconds(Int(env, name, 0, 1, (int)MaxDuration.TotalMilliseconds));
 
-    [GeneratedRegex("^[A-Za-z0-9_-]{1,64}$")]
+    [GeneratedRegex(@"^[A-Za-z0-9_-]{1,64}\z")]
     private static partial Regex SaleIdPattern();
 }
