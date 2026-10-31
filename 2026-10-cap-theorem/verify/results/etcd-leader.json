@@ -1,0 +1,107 @@
+{
+  "system": "etcd-leader",
+  "image": "quay.io/coreos/etcd:v3.7.3",
+  "ran_at": "2026-10-31T02:18:06+00:00",
+  "notes": {
+    "isolated_role": "leader",
+    "leader_before_partition": "etcd3"
+  },
+  "history": [
+    "1",
+    "2"
+  ],
+  "lost": [],
+  "timed_out_but_applied": [],
+  "steps": [
+    {
+      "stage": "正常",
+      "label": "etcd1 寫 x=1",
+      "ok": true,
+      "shown": "成功",
+      "written": "1",
+      "raw": "OK",
+      "timed_out": false
+    },
+    {
+      "stage": "正常",
+      "label": "etcd3 讀 x",
+      "ok": true,
+      "shown": "1",
+      "written": null,
+      "raw": "1",
+      "timed_out": false
+    },
+    {
+      "stage": "分區",
+      "label": "etcd1 寫 x=2",
+      "ok": true,
+      "shown": "成功",
+      "written": "2",
+      "raw": "OK",
+      "timed_out": false
+    },
+    {
+      "stage": "分區",
+      "label": "etcd3 寫 x=3",
+      "ok": false,
+      "shown": "逾時，結果未知：context deadline exceeded",
+      "written": "3",
+      "raw": "{\"level\":\"warn\",\"ts\":\"2026-10-31T02:17:57.269595Z\",\"logger\":\"etcd-client\",\"caller\":\"v3/retry_interceptor.go:68\",\"msg\":\"retrying of unary invoker failed\",\"target\":\"etcd-endpoints://0x1252d4a98c00/127.0.0.1:2379\",\"peer\":\"Peer{Addr: '127.0.0.1:2379', LocalAddr: '127.0.0.1:56952', AuthInfo: 'insecure'}\",\"method\":\"/etcdserverpb.KV/Put\",\"attempt\":0,\"error\":\"rpc error: code = DeadlineExceeded desc = stream terminated by RST_STREAM with error code: CANCEL\"}\nError: context deadline exceeded",
+      "timed_out": true
+    },
+    {
+      "stage": "分區",
+      "label": "etcd1 讀 x",
+      "ok": true,
+      "shown": "2",
+      "written": null,
+      "raw": "2",
+      "timed_out": false
+    },
+    {
+      "stage": "分區",
+      "label": "etcd3 讀 x",
+      "ok": false,
+      "shown": "逾時：context deadline exceeded",
+      "written": null,
+      "raw": "{\"level\":\"warn\",\"ts\":\"2026-10-31T02:18:00.419598Z\",\"logger\":\"etcd-client\",\"caller\":\"v3/retry_interceptor.go:68\",\"msg\":\"retrying of unary invoker failed\",\"target\":\"etcd-endpoints://0x5ca99b2cee00/127.0.0.1:2379\",\"peer\":\"Peer{Addr: '127.0.0.1:2379', LocalAddr: '127.0.0.1:47942', AuthInfo: 'insecure'}\",\"method\":\"/etcdserverpb.KV/Range\",\"attempt\":0,\"error\":\"rpc error: code = DeadlineExceeded desc = context deadline exceeded\"}\nError: context deadline exceeded",
+      "timed_out": true
+    },
+    {
+      "stage": "分區",
+      "label": "etcd3 讀 x（serializable，允許舊資料）",
+      "ok": true,
+      "shown": "1",
+      "written": null,
+      "raw": "1",
+      "timed_out": false
+    },
+    {
+      "stage": "恢復",
+      "label": "etcd1 讀 x",
+      "ok": true,
+      "shown": "2",
+      "written": null,
+      "raw": "2",
+      "timed_out": false
+    },
+    {
+      "stage": "恢復",
+      "label": "etcd2 讀 x",
+      "ok": true,
+      "shown": "2",
+      "written": null,
+      "raw": "2",
+      "timed_out": false
+    },
+    {
+      "stage": "恢復",
+      "label": "etcd3 讀 x",
+      "ok": true,
+      "shown": "2",
+      "written": null,
+      "raw": "2",
+      "timed_out": false
+    }
+  ]
+}

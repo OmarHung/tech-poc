@@ -1,0 +1,66 @@
+# 3 台 etcd（Raft），固定 IP，方便分區後用同一個 IP 接回網路。
+# 不對外開 port：scenario.py 透過 docker exec 在容器裡執行 etcdctl。
+name: cap-etcd
+
+networks:
+  cap:
+    ipam:
+      config:
+        - subnet: 172.30.10.0/24
+
+x-etcd: &etcd
+  image: quay.io/coreos/etcd:v3.7.3
+  healthcheck:
+    test: ["CMD", "/usr/local/bin/etcdctl", "endpoint", "health"]
+    interval: 2s
+    timeout: 3s
+    retries: 30
+
+services:
+  etcd1:
+    <<: *etcd
+    container_name: cap-etcd1
+    networks: { cap: { ipv4_address: 172.30.10.11 } }
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd1
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://172.30.10.11:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://172.30.10.11:2380
+      - --initial-cluster=etcd1=http://172.30.10.11:2380,etcd2=http://172.30.10.12:2380,etcd3=http://172.30.10.13:2380
+      - --initial-cluster-token=cap-poc
+      - --initial-cluster-state=new
+
+  etcd2:
+    <<: *etcd
+    container_name: cap-etcd2
+    networks: { cap: { ipv4_address: 172.30.10.12 } }
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd2
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://172.30.10.12:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://172.30.10.12:2380
+      - --initial-cluster=etcd1=http://172.30.10.11:2380,etcd2=http://172.30.10.12:2380,etcd3=http://172.30.10.13:2380
+      - --initial-cluster-token=cap-poc
+      - --initial-cluster-state=new
+
+  etcd3:
+    <<: *etcd
+    container_name: cap-etcd3
+    networks: { cap: { ipv4_address: 172.30.10.13 } }
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd3
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://172.30.10.13:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://172.30.10.13:2380
+      - --initial-cluster=etcd1=http://172.30.10.11:2380,etcd2=http://172.30.10.12:2380,etcd3=http://172.30.10.13:2380
+      - --initial-cluster-token=cap-poc
+      - --initial-cluster-state=new

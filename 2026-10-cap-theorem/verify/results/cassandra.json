@@ -1,0 +1,112 @@
+{
+  "system": "cassandra",
+  "image": "cassandra:5.0.9",
+  "ran_at": "2026-10-31T02:17:16+00:00",
+  "notes": {},
+  "history": null,
+  "lost": [
+    "cass1 寫 x=2（ONE）"
+  ],
+  "timed_out_but_applied": [],
+  "steps": [
+    {
+      "stage": "正常",
+      "label": "cass1 寫 x=1（ALL）",
+      "ok": true,
+      "shown": "成功",
+      "written": "1",
+      "raw": "Consistency level set to ALL.",
+      "timed_out": false
+    },
+    {
+      "stage": "正常",
+      "label": "cass3 讀 x（ONE）",
+      "ok": true,
+      "shown": "1",
+      "written": null,
+      "raw": "Consistency level set to ONE.\n\n v\n---\n 1\n\n(1 rows)",
+      "timed_out": false
+    },
+    {
+      "stage": "分區",
+      "label": "cass1 寫 x=2（ONE）",
+      "ok": true,
+      "shown": "成功",
+      "written": "2",
+      "raw": "Consistency level set to ONE.",
+      "timed_out": false
+    },
+    {
+      "stage": "分區",
+      "label": "cass3 寫 x=3（QUORUM）",
+      "ok": false,
+      "shown": "拒絕：Cannot achieve consistency level QUORUM",
+      "written": "3",
+      "raw": "Consistency level set to QUORUM.\n<stdin>:1:NoHostAvailable: ('Unable to complete the operation against any hosts', {<Host: 127.0.0.1:9042 datacenter1>: Unavailable('Error from server: code=1000 [Unavailable exception] message=\"Cannot achieve consistency level QUORUM\" info={\\'consistency\\': \\'QUORUM\\', \\'required_replicas\\': 2, \\'alive_replicas\\': 1}')})",
+      "timed_out": false
+    },
+    {
+      "stage": "分區",
+      "label": "cass3 寫 x=3（ONE）",
+      "ok": true,
+      "shown": "成功",
+      "written": "3",
+      "raw": "Consistency level set to ONE.",
+      "timed_out": false
+    },
+    {
+      "stage": "分區",
+      "label": "cass1 讀 x（ONE）",
+      "ok": true,
+      "shown": "2",
+      "written": null,
+      "raw": "Consistency level set to ONE.\n\n v\n---\n 2\n\n(1 rows)",
+      "timed_out": false
+    },
+    {
+      "stage": "分區",
+      "label": "cass3 讀 x（ONE）",
+      "ok": true,
+      "shown": "3",
+      "written": null,
+      "raw": "Consistency level set to ONE.\n\n v\n---\n 3\n\n(1 rows)",
+      "timed_out": false
+    },
+    {
+      "stage": "分區",
+      "label": "cass3 讀 x（QUORUM）",
+      "ok": false,
+      "shown": "拒絕：Cannot achieve consistency level QUORUM",
+      "written": null,
+      "raw": "Consistency level set to QUORUM.\n<stdin>:1:NoHostAvailable: ('Unable to complete the operation against any hosts', {<Host: 127.0.0.1:9042 datacenter1>: Unavailable('Error from server: code=1000 [Unavailable exception] message=\"Cannot achieve consistency level QUORUM\" info={\\'consistency\\': \\'QUORUM\\', \\'required_replicas\\': 2, \\'alive_replicas\\': 1}')})",
+      "timed_out": false
+    },
+    {
+      "stage": "恢復",
+      "label": "cass1 讀 x（ONE）",
+      "ok": true,
+      "shown": "3",
+      "written": null,
+      "raw": "Consistency level set to ONE.\n\n v\n---\n 3\n\n(1 rows)",
+      "timed_out": false
+    },
+    {
+      "stage": "恢復",
+      "label": "cass2 讀 x（ONE）",
+      "ok": true,
+      "shown": "3",
+      "written": null,
+      "raw": "Consistency level set to ONE.\n\n v\n---\n 3\n\n(1 rows)",
+      "timed_out": false
+    },
+    {
+      "stage": "恢復",
+      "label": "cass3 讀 x（ONE）",
+      "ok": true,
+      "shown": "3",
+      "written": null,
+      "raw": "Consistency level set to ONE.\n\n v\n---\n 3\n\n(1 rows)",
+      "timed_out": false
+    }
+  ]
+}

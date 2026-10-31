@@ -4,7 +4,10 @@
 client1 連 A 寫 x=2，接著 client2 連 C 寫 x=3，最後網路恢復。
 """
 
+from collections.abc import Mapping
+
 from cap import Cluster, Mode, Result, heal, new_cluster, partition, read, write
+from merge import add, compare, merge_counters, next_version, reconcile, total
 
 
 def show_write(label: str, result: Result) -> None:
@@ -49,7 +52,59 @@ def run_two_nodes() -> None:
     print("  兩邊都湊不到過半，整個服務停擺 → 需要第三方仲裁（witness）才能撐過分區")
 
 
+def format_clock(clock: Mapping[str, int]) -> str:
+    return (
+        "{"
+        + ", ".join(f"{node}:{count}" for node, count in sorted(clock.items()))
+        + "}"
+    )
+
+
+def run_version_vectors() -> None:
+    print("  --- 方案一：version vector，並行寫入兩個都留下 ---")
+    x1 = next_version([], "A", "1")
+    print(f"  [正常] A 寫 x=1 → 時鐘 {format_clock(x1.clock)}，複製到 B、C")
+    x2 = next_version([x1], "A", "2")
+    print(f"  [分區] A 寫 x=2 → 時鐘 {format_clock(x2.clock)}")
+    x3 = next_version([x1], "C", "3")
+    print(f"  [分區] C 寫 x=3 → 時鐘 {format_clock(x3.clock)}")
+    pair = f"{format_clock(x2.clock)} 和 {format_clock(x3.clock)}"
+    print(f"  [恢復] 比較 {pair} → {compare(x2.clock, x3.clock).value}")
+    siblings = reconcile([x2, x2, x3])  # A、B、C 三台手上的版本
+    values = "、".join(sibling.value for sibling in siblings)
+    print(f"  [恢復] 讀 x → {values}（兄弟版本都留著，交給應用層決定）")
+    resolved = format_clock(next_version(siblings, "A", "5").clock)
+    print(f"  [解決] 應用層合併成 x=5 寫回 A → 時鐘 {resolved}，取代兄弟版本")
+
+
+def last_write_wins_total() -> str | None:
+    """把計數器的總數當一般值，用 cap.py 的 AP 模式跑一次：A 那側 +2、C 那側 +3。"""
+    cluster, _ = write(new_cluster(Mode.AP), "A", "x", "0")
+    cluster = partition(cluster, {"A", "B"}, {"C"})
+    cluster, _ = write(cluster, "A", "x", "2")
+    cluster, _ = write(cluster, "C", "x", "3")
+    cluster, _ = heal(cluster)
+    return read(cluster, "A", "x").value
+
+
+def run_counter() -> None:
+    print("  --- 方案二：CRDT 計數器（G-Counter），自動合併 ---")
+    print("  [分區] A 那側 +2、C 那側 +3")
+    lww = last_write_wins_total()
+    print(f"  [恢復] 把總數當一般值用 last-write-wins → {lww}（少了 A 的 +2）")
+    merged = merge_counters(add({}, "A", 2), add({}, "C", 3))
+    cells, sum_ = format_clock(merged), total(merged)
+    print(f"  [恢復] G-Counter 每格取最大再相加 → {cells}，總數 {sum_}")
+
+
+def run_lossless_merges() -> None:
+    print("\n=== 延伸：AP 不丟資料的兩種合併方式 ===")
+    run_version_vectors()
+    run_counter()
+
+
 if __name__ == "__main__":
     run_three_nodes(Mode.CP)
     run_three_nodes(Mode.AP)
     run_two_nodes()
+    run_lossless_merges()

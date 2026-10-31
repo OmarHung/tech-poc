@@ -33,7 +33,7 @@
   nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 0; }
   nav.toc a { text-decoration: none; font-size: .9rem; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--fg); background: var(--card); }
   code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .86em; }
-  :not(pre) > code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; }
+  :not(pre) > code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; overflow-wrap: anywhere; }
   pre { background: var(--code-bg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; line-height: 1.55; margin: 10px 0; }
   pre .c { color: var(--muted); }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 16px 0; }
@@ -81,9 +81,9 @@
   @keyframes dash { to { stroke-dashoffset: -12; } }
   @media (prefers-reduced-motion: reduce) { #flow path.edge.on { animation: none; } }
   .panel { margin-top: 12px; }
-  .panel dl { display: grid; grid-template-columns: 7.5em 1fr; gap: 6px 14px; margin: 8px 0; }
+  .panel dl { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 6px 14px; margin: 8px 0; }
   .panel dt { color: var(--muted); }
-  .panel dd { margin: 0; }
+  .panel dd { margin: 0; overflow-wrap: anywhere; }
 
   /* step timeline */
   ol.steps { list-style: none; padding: 0; margin: 16px 0; counter-reset: step; }
@@ -107,7 +107,7 @@
 
 <header>
   <h1>CAP 定理範例｜Rust 版運作說明</h1>
-  <p class="lead">這頁說明 <code>rust/</code> 裡的程式怎麼運作：怎麼在單一程序裡模擬 3 台節點和網路分區，CP 和 AP 兩種模式在分區、恢復時各發生什麼事。Rust edition 2024（本機 rustc 1.98），只用標準函式庫（<code>std::collections::{BTreeMap, BTreeSet}</code>），沒有任何 crate 相依，測試用內建的 <code>cargo test</code>。</p>
+  <p class="lead">這頁說明 <code>rust/</code> 裡的程式怎麼運作：怎麼在單一程序裡模擬 3 台節點和網路分區，CP 和 AP 兩種模式在分區、恢復時各發生什麼事，以及 AP 怎麼用 version vector 或 CRDT 合併才不會丟資料。Rust edition 2024（本機 rustc 1.98），只用標準函式庫（<code>std::collections::{BTreeMap, BTreeSet}</code>），沒有任何 crate 相依，測試用內建的 <code>cargo test</code>。</p>
   <nav class="toc" aria-label="目錄">
     <a href="#overview">1. 全貌</a>
     <a href="#flow-section">2. 互動流程圖</a>
@@ -119,7 +119,7 @@
 </header>
 
 <section id="overview">
-  <h2>1. 全貌：一個模擬、一支示範程式、一組測試</h2>
+  <h2>1. 全貌：兩個模組、一支示範程式、兩組測試</h2>
   <p>這份實作<strong>沒有真的網路，也不開任何 port</strong>。3 台節點 A、B、C 只是記憶體裡的資料，「網路分區」用「節點分組」表示：同一組內可以互相連線，跨組連不到。這樣每次跑的結果都一樣，不會被真實網路的抖動干擾。</p>
   <div class="cards">
     <div class="card major">
@@ -127,15 +127,20 @@
       <div class="port">模擬本體 ・ crate <code>cap_theorem</code>，被 main.rs 和測試使用</div>
       <p>叢集 <code>Cluster</code> 和五個操作：<code>Cluster::new()</code> 建立、<code>partition()</code> 切斷網路、<code>write()</code> 寫入、<code>read()</code> 讀取、<code>heal()</code> 恢復並合併。方法都只拿 <code>&amp;self</code>、回傳新的叢集，舊的不變。</p>
     </div>
+    <div class="card major">
+      <h3>src/merge.rs</h3>
+      <div class="port">AP 不丟資料的合併方式 ・ 模組 <code>cap_theorem::merge</code></div>
+      <p>version vector：<code>compare()</code> 判斷兩個版本誰先誰後或並行，<code>reconcile()</code> 保留並行的兄弟版本，<code>next_version()</code> 寫入新版本取代它們。CRDT：G-Counter 的 <code>add()</code>、<code>merge_counters()</code>、<code>total()</code>。在 <code>lib.rs</code> 用 <code>pub mod merge;</code> 掛上。</p>
+    </div>
     <div class="card tool">
       <h3>src/main.rs</h3>
       <div class="port">示範程式 ・ <code>./run.sh demo</code></div>
-      <p>依序跑三個情境：3 台 CP、3 台 AP、只有 2 台的 CP，把每一步的結果印出來。三種語言版本的輸出逐字相同。</p>
+      <p>依序跑四段：3 台 CP、3 台 AP、只有 2 台的 CP、AP 不丟資料的兩種合併方式，把每一步的結果印出來。三種語言版本的輸出逐字相同。</p>
     </div>
     <div class="card minor">
-      <h3>tests/cap.rs</h3>
-      <div class="port">12 個整合測試 ・ <code>./run.sh test</code></div>
-      <p>README 的每一條成功標準都對應一個測試。「分組不合法」的三種情況（漏掉、重複、不存在）在同一個測試裡用迴圈跑，所以比 Python、.NET 的 14 個少，測的情境其實一樣。</p>
+      <h3>tests/cap.rs、tests/merge.rs</h3>
+      <div class="port">12 ＋ 10 個整合測試 ・ <code>./run.sh test</code></div>
+      <p>README 的每一條成功標準都對應一個測試，包括 version vector 保留並行寫入、G-Counter 合併不丟累加。「分組不合法」的三種情況和 <code>compare()</code> 的 5 個案例都在同一個測試裡用迴圈跑，所以總數 22 個比 Python、.NET 少，測的情境其實一樣。</p>
     </div>
   </div>
 
@@ -148,6 +153,10 @@
       <tr><td><code>CapError</code></td><td><code>NoQuorum { reachable, quorum }</code>、<code>UnknownNode(String)</code>、<code>InvalidPartition</code></td><td>所有失敗都用 <code>Result&lt;_, CapError&gt;</code> 回傳，不會 panic。<code>Display</code> 印出中文訊息，例如「只連得到 1 台，需要 2 台才過半」</td></tr>
       <tr><td><code>Cluster</code></td><td>私有欄位 <code>mode</code>、<code>nodes</code>、<code>stores</code>、<code>groups</code>、<code>clock</code>、<code>partitioned_at</code></td><td>對外只有方法：<code>new()</code>、<code>nodes()</code>、<code>quorum()</code>、<code>partition()</code>、<code>write()</code>、<code>read()</code>、<code>heal()</code>。<code>stores</code> 是「節點 → <code>Store</code>」；<code>groups</code> 是目前連得到彼此的分組；<code>partitioned_at</code> 是分區發生時的時鐘</td></tr>
       <tr><td><code>Store</code></td><td><code>BTreeMap&lt;String, Version&gt;</code></td><td>私有的型別別名：一台節點上的資料，key → 版本</td></tr>
+      <tr><td><code>Sibling</code>（merge.rs）</td><td><code>value</code>、<code>clock</code></td><td>一個版本。<code>clock</code> 是 version vector：「節點 → 這個節點寫過幾次」</td></tr>
+      <tr><td><code>Order</code>（merge.rs）</td><td><code>Before</code>、<code>After</code>、<code>Equal</code>、<code>Concurrent</code></td><td><code>compare()</code> 的結果。實作了 <code>Display</code>，印成 demo 裡的「之前／之後／相同／並行」</td></tr>
+      <tr><td><code>VectorClock</code>、<code>GCounter</code>（merge.rs）</td><td>都是 <code>BTreeMap&lt;String, u64&gt;</code></td><td>公開的型別別名。<code>VectorClock</code> 是「節點 → 這個節點寫過幾次」；<code>GCounter</code> 是「節點 → 累加的量」，總數是各格相加</td></tr>
+      <tr><td><code>MergeError</code>（merge.rs）</td><td><code>ZeroAmount</code></td><td><code>add()</code> 累加 0 時回傳；<code>Display</code> 是「G-Counter 只能加正數，收到 0」</td></tr>
     </tbody>
   </table>
 
@@ -158,9 +167,11 @@
 ├── run.sh              ./run.sh demo | test
 ├── src/
 │   ├── lib.rs          模擬本體：Mode、Version、CapError、Cluster
-│   └── main.rs         示範程式：依序跑三個情境並印出結果
+│   ├── merge.rs        AP 不丟資料的合併：version vector、G-Counter
+│   └── main.rs         示範程式：依序跑四段情境並印出結果
 ├── tests/
-│   └── cap.rs          12 個整合測試（cargo test）
+│   ├── cap.rs          12 個整合測試（cargo test）
+│   └── merge.rs        10 個整合測試（cargo test）
 <span class="hl">└── how-it-works.html   就是這一頁</span></pre>
 </section>
 
@@ -174,6 +185,8 @@
     <button type="button" data-phase-btn="ap-split" aria-pressed="false">AP：分區中</button>
     <button type="button" data-phase-btn="ap-heal" aria-pressed="false">AP：恢復後</button>
     <button type="button" data-phase-btn="two" aria-pressed="false">延伸：只有 2 台的 CP</button>
+    <button type="button" data-phase-btn="ap-vv" aria-pressed="false">延伸：AP 改用 version vector</button>
+    <button type="button" data-phase-btn="ap-crdt" aria-pressed="false">延伸：AP 改用 G-Counter</button>
   </div>
 
   <div class="flow-wrap">
@@ -281,6 +294,28 @@
         <dt>為什麼</dt><dd><code>quorum()</code> 是 <code>self.nodes.len() / 2 + 1</code>，2 台需要 2 台。網路一斷，哪一邊都湊不到。</dd>
         <dt>意義</dt><dd>雙機備援如果選 CP，就要加一個第三方仲裁（witness）湊出第三票，見<a href="../../2026-10-dual-node-failover/README.md">雙機備援 PoC</a>。</dd>
         <dt>對應測試</dt><dd><code>cp_with_two_nodes_cannot_serve_on_either_side_of_a_partition</code></dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="ap-vv" hidden>
+      <h3>延伸：AP 恢復時改用 version vector，並行寫入兩個都留下</h3>
+      <dl>
+        <dt>呼叫</dt><dd><code>src/merge.rs</code>：<code>merge::next_version(std::slice::from_ref(&amp;x1), "A", "2")</code>、<code>merge::next_version(std::slice::from_ref(&amp;x1), "C", "3")</code> → <code>merge::reconcile(&amp;[x2.clone(), x2, x3])</code></dd>
+        <dt>結果</dt><dd>兩個版本都保留：<code>x=2</code>（時鐘 <code>{A:2}</code>）和 <code>x=3</code>（時鐘 <code>{A:1, C:1}</code>）。回傳的 <code>Vec&lt;Sibling&gt;</code> 有兩個兄弟版本，讀 x 會拿到 2、3。</dd>
+        <dt>為什麼</dt><dd>每個版本記下「各節點寫過幾次」。<code>merge::compare()</code> 發現 <code>{A:2}</code> 在 A 那格比較大、<code>{A:1, C:1}</code> 在 C 那格比較大，兩邊互相沒看過對方，回傳 <code>Order::Concurrent</code>，誰都不能蓋掉誰。</dd>
+        <dt>接下來</dt><dd>應用層讀到兩個值，自己決定怎麼合併（例如合成 <code>x=5</code>），再用 <code>merge::next_version(&amp;siblings, "A", "5")</code> 寫回。新時鐘 <code>{A:3, C:1}</code> 涵蓋兩個兄弟版本，下一次 <code>merge::reconcile()</code> 就只剩它。</dd>
+        <dt>代價</dt><dd>不會默默丟資料，但衝突沒有消失，只是交給應用層處理。Dynamo、Riak 是這種做法。</dd>
+        <dt>對應測試</dt><dd><code>reconcile_keeps_both_concurrent_writes</code>、<code>resolved_version_replaces_the_siblings_after_another_reconcile</code>（<code>tests/merge.rs</code>）</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="ap-crdt" hidden>
+      <h3>延伸：AP 恢復時改用 CRDT 計數器（G-Counter），自動合併</h3>
+      <dl>
+        <dt>情境</dt><dd>x 是一個計數器（例如按讚數）。分區期間 A 那側 +2、C 那側 +3。</dd>
+        <dt>呼叫</dt><dd><code>merge::add(&amp;GCounter::new(), "A", 2)?</code>、<code>merge::add(&amp;GCounter::new(), "C", 3)?</code> → <code>merge::merge_counters(&amp;[&amp;on_a, &amp;on_c])</code></dd>
+        <dt>結果</dt><dd><code>{A:2, C:3}</code>，<code>merge::total()</code> 是 5。如果把總數當一般值、用 <code>Cluster::heal()</code> 的 last-write-wins 合併（<code>src/main.rs</code> 的 <code>last_write_wins_total()</code>），結果是 3，A 的 +2 不見了。</dd>
+        <dt>為什麼</dt><dd>每台只累加自己那一格，合併時每格取最大值，總數是各格相加。合併的順序、次數都不影響結果，所以不用人決定，也不會丟。</dd>
+        <dt>限制</dt><dd>只適用於能設計成 CRDT 的資料型別（計數器、集合等）。「把 x 設成某個值」這種覆寫操作沒辦法自動合併，還是要用 version vector。</dd>
+        <dt>對應測試</dt><dd><code>counter_increments_on_both_sides_merge_without_loss</code>、<code>last_write_wins_on_a_counter_total_loses_an_increment</code>（<code>tests/merge.rs</code>）</dd>
       </dl>
     </div>
   </div>
@@ -446,21 +481,22 @@ fn versions_by_time&lt;'a&gt;(stores: impl Iterator&lt;Item = &amp;'a Store&gt;,
   <div class="cols">
     <div class="card tool">
       <h3>src/main.rs</h3>
-      <p><code>main()</code> 回傳 <code>Result&lt;(), CapError&gt;</code>，依序呼叫 <code>run_three_nodes(Mode::Cp)?</code>、<code>run_three_nodes(Mode::Ap)?</code>、<code>run_two_nodes()</code>。每個情境都從 <code>Cluster::new()</code> 重新開始，互不影響。沒有設定檔，也不讀環境變數。</p>
+      <p><code>main()</code> 回傳 <code>Result&lt;(), Box&lt;dyn Error&gt;&gt;</code>，依序呼叫 <code>run_three_nodes(Mode::Cp)?</code>、<code>run_three_nodes(Mode::Ap)?</code>、<code>run_two_nodes()?</code>、<code>run_lossless_merges()</code>。每段都從新的叢集或空的時鐘開始，互不影響。回傳型別用 <code>Box&lt;dyn Error&gt;</code>，是因為最後一段可能遇到 <code>CapError</code>，也可能遇到 <code>MergeError</code>。沒有設定檔，也不讀環境變數。</p>
     </div>
     <div class="card major">
       <h3>Cluster::new()</h3>
       <p><code>src/lib.rs</code>：每個節點一個空的 <code>Store</code>，只有一個分組（全部連通），<code>clock: 0</code>、<code>partitioned_at: None</code>。3 台的情境傳 <code>&amp;["A", "B", "C"]</code>，2 台的情境傳 <code>&amp;["A", "B"]</code>。</p>
     </div>
     <div class="card minor">
-      <h3>tests/cap.rs</h3>
-      <p><code>cargo test</code> 把它編成獨立的測試執行檔，只能用 crate 公開的 API。12 個 <code>#[test]</code>；共用情境由 <code>partitioned()</code>、<code>written_on_both_sides()</code> 組出來，<code>values_on_every_node()</code> 收集每台讀到的值。</p>
+      <h3>tests/cap.rs、tests/merge.rs</h3>
+      <p><code>cargo test</code> 把每個檔案各編成一個獨立的測試執行檔，只能用 crate 公開的 API。<code>cap.rs</code> 12 個、<code>merge.rs</code> 10 個 <code>#[test]</code>，共 22 個。共用情境由 <code>partitioned()</code>、<code>written_on_both_sides()</code> 和 <code>merge.rs</code> 開頭的 <code>x1()</code>、<code>x2_on_a()</code>、<code>x3_on_c()</code> 組出來，<code>values_on_every_node()</code> 收集每台讀到的值。</p>
     </div>
   </div>
-<pre>fn main() -&gt; Result&lt;(), CapError&gt; {
+<pre>fn main() -&gt; Result&lt;(), Box&lt;dyn Error&gt;&gt; {
     run_three_nodes(Mode::Cp)?;
     run_three_nodes(Mode::Ap)?;
-    run_two_nodes()
+    run_two_nodes()?;
+    run_lossless_merges()
 }
 
 <span class="c">// src/lib.rs</span>
@@ -532,6 +568,55 @@ impl fmt::Display for CapError {
         self.nodes.len() / 2 + 1
     }</pre>
 
+  <h3>AP 不丟資料：分清楚「落後」和「並行」</h3>
+  <p><code>Cluster::heal()</code> 的 last-write-wins 只看時間戳，所以分不出「C 只是落後」和「A、C 同時寫了不同的值」，後者就會默默丟掉一筆。<code>src/merge.rs</code> 改用 version vector：每個版本記下各節點寫過幾次，<code>compare()</code> 比較每一格，雙方各有一格比較大就是並行。<code>reconcile()</code> 只丟掉被別人看過的舊版本，並行的全部保留。</p>
+<pre>pub fn compare(a: &amp;VectorClock, b: &amp;VectorClock) -&gt; Order {
+    let nodes: BTreeSet&lt;&amp;String&gt; = a.keys().chain(b.keys()).collect();
+    let count = |clock: &amp;VectorClock, node: &amp;String| clock.get(node).copied().unwrap_or(0);
+    let a_ahead = nodes.iter().any(|node| count(a, node) &gt; count(b, node));
+    let b_ahead = nodes.iter().any(|node| count(b, node) &gt; count(a, node));
+    match (a_ahead, b_ahead) {
+        (true, true) =&gt; Order::Concurrent,
+        (true, false) =&gt; Order::After,
+        (false, true) =&gt; Order::Before,
+        (false, false) =&gt; Order::Equal,
+    }
+}
+
+<span class="c">/// 合併各節點手上的版本：已經被別的版本看過的丟掉，並行的全部保留。</span>
+pub fn reconcile(versions: &amp;[Sibling]) -&gt; Vec&lt;Sibling&gt; {
+    let distinct: Vec&lt;&amp;Sibling&gt; = versions
+        .iter()
+        .enumerate()
+        .filter(|&amp;(i, version)| !versions[..i].contains(version))
+        .map(|(_, version)| version)
+        .collect();
+    distinct
+        .iter()
+        .filter(|version| {
+            !distinct
+                .iter()
+                .any(|other| compare(&amp;version.clock, &amp;other.clock) == Order::Before)
+        })
+        .map(|&amp;version| version.clone())
+        .collect()
+}</pre>
+  <p>如果資料本身能設計成 CRDT，連衝突都不用處理。G-Counter 每台只累加自己那一格，合併時每格取最大值：</p>
+<pre><span class="c">/// 在 node 那一格累加。G-Counter 只能增加；要能減少，就用兩個組成 PN-Counter。</span>
+pub fn add(counter: &amp;GCounter, node: &amp;str, amount: u64) -&gt; Result&lt;GCounter, MergeError&gt; {
+    if amount == 0 {
+        return Err(MergeError::ZeroAmount);
+    }
+    let mut updated = counter.clone();
+    *updated.entry(node.to_owned()).or_insert(0) += amount;
+    Ok(updated)
+}
+
+<span class="c">/// 每一格取最大值。</span>
+pub fn merge_counters(counters: &amp;[&amp;GCounter]) -&gt; GCounter {
+    max_per_node(counters.iter().copied())
+}</pre>
+
   <h3>其他</h3>
   <table>
     <thead><tr><th>設計</th><th>做法</th><th>在哪裡</th></tr></thead>
@@ -541,6 +626,7 @@ impl fmt::Display for CapError {
       <tr><td>輸入驗證</td><td>分組要剛好涵蓋每個節點一次（兩邊排序後比對）、節點名稱要存在，否則回 <code>Err</code>，不會 panic</td><td><code>partition()</code>、<code>sorted()</code>、<code>reachable()</code></td></tr>
       <tr><td>沒有外部套件</td><td><code>Cargo.toml</code> 沒有任何 <code>[dependencies]</code>，只用標準函式庫</td><td><code>Cargo.toml</code></td></tr>
       <tr><td>三種語言結果一致</td><td>Python、.NET 版本照同一個模型實作，<code>demo</code> 的輸出用 <code>diff</code> 比對逐字相同</td><td>PoC 的 README「怎麼跑」</td></tr>
+      <tr><td>拿真實系統對照</td><td>用 Docker 起 3 台 etcd 和 3 台 Cassandra，拔掉第 3 台的網路重跑同一個情境，行為和這個模擬一致</td><td><code>../verify/</code>、PoC 的 README「實驗紀錄」</td></tr>
     </tbody>
   </table>
 </section>
@@ -548,11 +634,12 @@ impl fmt::Display for CapError {
 <section id="run">
   <h2>6. 怎麼跑</h2>
 <pre><span class="c"># 在 rust/ 底下</span>
-./run.sh demo                      <span class="c"># cargo run --quiet：印出三個情境</span>
-./run.sh test                      <span class="c"># cargo test：12 個測試</span>
+./run.sh demo                      <span class="c"># cargo run --quiet：印出四段情境</span>
+./run.sh test                      <span class="c"># cargo test：22 個測試</span>
 
-<span class="c"># 只跑名稱含 ap_heal 的測試</span>
-cargo test ap_heal
+<span class="c"># 只跑一部分測試</span>
+cargo test ap_heal                 <span class="c"># 名稱含 ap_heal 的測試</span>
+cargo test --test merge            <span class="c"># 只跑 version vector 和 G-Counter（tests/merge.rs）</span>
 
 <span class="c"># 格式與靜態檢查</span>
 cargo fmt --check
@@ -563,7 +650,11 @@ cargo install cargo-llvm-cov
 cargo llvm-cov
 
 <span class="c"># 確認三種語言輸出相同（在 PoC 根目錄）</span>
-diff &lt;(python/run.sh demo) &lt;(dotnet/run.sh demo) &amp;&amp; diff &lt;(python/run.sh demo) &lt;(rust/run.sh demo)</pre>
+diff &lt;(python/run.sh demo) &lt;(dotnet/run.sh demo) &amp;&amp; diff &lt;(python/run.sh demo) &lt;(rust/run.sh demo)
+
+<span class="c"># 用真實的 etcd、Cassandra 重跑同一個情境（在 PoC 根目錄，需要 Docker）</span>
+verify/run.sh etcd                 <span class="c"># 約 30 秒</span>
+verify/run.sh cassandra            <span class="c"># 約 2 分鐘</span></pre>
 
   <p>這份實作沒有 port，也不讀環境變數。想換情境就改 <code>src/main.rs</code> 裡的這些地方：</p>
   <table>
@@ -607,6 +698,14 @@ diff &lt;(python/run.sh demo) &lt;(dotnet/run.sh demo) &amp;&amp; diff &lt;(pyth
     two: {
       on: [], fail: ["c1-a", "c2-b", "a-b"], down: ["A", "B"], dim: [], gone: ["C", "c2-c", "a-c", "c-a", "c-b"], cut: "h",
       values: { A: "（沒有資料）", B: "（沒有資料）", C: "" }, notes: { A: "只有 1 台，需要 2 台", B: "只有 1 台，需要 2 台", C: "" },
+    },
+    "ap-vv": {
+      on: ["a-c", "c-a", "c-b"], fail: [], down: [], dim: ["client1", "client2"], gone: ["c2-b"], cut: null,
+      values: ALL_SAME("x = 2、3"), notes: { A: "{A:2} 和 {A:1, C:1} 並行", B: "兩個兄弟版本都留著", C: "交給應用層決定，沒有遺失" },
+    },
+    "ap-crdt": {
+      on: ["a-c", "c-a", "c-b"], fail: [], down: [], dim: ["client1", "client2"], gone: ["c2-b"], cut: null,
+      values: ALL_SAME("總數 5"), notes: { A: "{A:2, C:3}：A 那格 +2", B: "{A:2, C:3}", C: "{A:2, C:3}：C 那格 +3" },
     },
   };
 

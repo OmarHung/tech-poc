@@ -1,0 +1,44 @@
+# 3 台 Cassandra，固定 IP，方便分區後用同一個 IP 接回網路。
+# Cassandra 要一台一台加入叢集，所以 cass2 等 cass1 健康、cass3 等 cass2 健康才啟動。
+# 不對外開 port：scenario.py 透過 docker exec 在容器裡執行 cqlsh、nodetool。
+name: cap-cassandra
+
+networks:
+  cap:
+    ipam:
+      config:
+        - subnet: 172.30.20.0/24
+
+x-cassandra: &cassandra
+  image: cassandra:5.0.9
+  environment:
+    CASSANDRA_CLUSTER_NAME: cap-poc
+    CASSANDRA_SEEDS: 172.30.20.11
+    MAX_HEAP_SIZE: 512M
+    HEAP_NEWSIZE: 128M
+    # 本機測試用：縮短加入叢集前的等待時間
+    JVM_EXTRA_OPTS: -Dcassandra.skip_wait_for_gossip_to_settle=0 -Dcassandra.ring_delay_ms=1000
+  healthcheck:
+    test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+    interval: 5s
+    timeout: 10s
+    retries: 60
+    start_period: 20s
+
+services:
+  cass1:
+    <<: *cassandra
+    container_name: cap-cass1
+    networks: { cap: { ipv4_address: 172.30.20.11 } }
+
+  cass2:
+    <<: *cassandra
+    container_name: cap-cass2
+    networks: { cap: { ipv4_address: 172.30.20.12 } }
+    depends_on: { cass1: { condition: service_healthy } }
+
+  cass3:
+    <<: *cassandra
+    container_name: cap-cass3
+    networks: { cap: { ipv4_address: 172.30.20.13 } }
+    depends_on: { cass2: { condition: service_healthy } }

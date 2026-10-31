@@ -5,6 +5,8 @@
 //! 整個模擬跑在單一程序內，沒有真的網路，所以每次結果都一樣。
 //! 叢集是不可變的：每個操作都回傳新的叢集，原本的不會變。
 
+pub mod merge;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
