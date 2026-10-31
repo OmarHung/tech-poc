@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>.NET 版運作說明｜Clean Code 重構範例</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --fg: #1d232b; --muted: #5d6773; --line: #d8dde3; --card: #ffffff; --code-bg: #f0f2f5;
+    --flow: #2563eb; --flow-ink: #ffffff; --fail: #d64545; --idle: #b9c0c8;
+    --tool: #6d5bd0; --major: #0f8b8d; --minor: #b86e0b; --warn-bg: #fff4dc; --warn-fg: #8a5300;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a; --fg: #e4e7eb; --muted: #9aa4b0; --line: #2d333b; --card: #1a1f26; --code-bg: #20262e;
+      --flow: #6ea0ff; --flow-ink: #0b1220; --fail: #ff7272; --idle: #4a525c;
+      --tool: #a596ff; --major: #4cc7c9; --minor: #f0a948; --warn-bg: #3a2c12; --warn-fg: #f5c46b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); line-height: 1.7;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 1.9rem; line-height: 1.3; margin: 0 0 8px; }
+  h2 { font-size: 1.35rem; margin: 56px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 20px 0 8px; }
+  p { margin: 8px 0; }
+  a { color: var(--flow); }
+  .lead { color: var(--muted); font-size: 1.05rem; margin: 0; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 0; }
+  nav.toc a { text-decoration: none; font-size: .9rem; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--fg); background: var(--card); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .86em; }
+  :not(pre) > code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; line-height: 1.55; margin: 10px 0; }
+  pre .c { color: var(--muted); }
+  pre .bad { color: var(--fail); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 16px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; border-top: 4px solid var(--c, var(--line)); }
+  .card h3 { margin: 0 0 4px; }
+  .card .port { color: var(--muted); font-size: .85rem; }
+  .card p { font-size: .93rem; }
+  .tool { --c: var(--tool); } .major { --c: var(--major); } .minor { --c: var(--minor); } .legacy { --c: var(--fail); }
+  .tree { background: var(--card); border: 1px solid var(--line); }
+  .tree .hl { background: var(--warn-bg); color: var(--warn-fg); border-radius: 3px; }
+  .note { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; padding: 10px 14px; font-size: .93rem; margin: 12px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: .92rem; background: var(--card); }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+  th { background: var(--code-bg); font-weight: 600; }
+  td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  /* interactive flow */
+  .phase-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .phase-buttons button {
+    font: inherit; font-size: .92rem; cursor: pointer; padding: 6px 14px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--card); color: var(--fg);
+  }
+  .phase-buttons button:hover { border-color: var(--flow); }
+  .phase-buttons button:focus-visible { outline: 3px solid var(--flow); outline-offset: 2px; }
+  .phase-buttons button[aria-pressed="true"] { background: var(--flow); border-color: var(--flow); color: var(--flow-ink); font-weight: 600; }
+  .flow-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  #flow { width: 100%; height: auto; display: block; }
+  #flow text { fill: var(--fg); font-size: 12.5px; text-anchor: middle; }
+  #flow text.small { font-size: 11px; fill: var(--muted); }
+  #flow text.half { font-weight: 700; font-size: 15px; }
+  #flow text.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+  #flow text.ok { fill: var(--major); font-weight: 700; }
+  #flow text.bad { fill: var(--fail); font-weight: 700; }
+  #flow text.result { font-weight: 700; font-size: 13.5px; }
+  #flow .box rect { fill: var(--card); stroke: var(--idle); stroke-width: 2; rx: 7; transition: opacity .2s; }
+  #flow .box.active rect { stroke: var(--flow); stroke-width: 2.6; }
+  #flow .box.error rect { stroke: var(--fail); fill: var(--warn-bg); }
+  #flow .box.dim { opacity: .35; }
+  #flow line.divider { stroke: var(--line); stroke-width: 2; }
+  #flow path.edge { fill: none; stroke: var(--idle); stroke-width: 1.8; opacity: .5; marker-end: url(#arrow-idle); }
+  #flow path.edge.on { stroke: var(--flow); opacity: 1; stroke-width: 2.6; stroke-dasharray: 7 5; animation: dash 1s linear infinite; marker-end: url(#arrow-on); }
+  #flow path.edge.fail { stroke: var(--fail); opacity: 1; stroke-width: 2.6; stroke-dasharray: 3 5; marker-end: url(#arrow-fail); }
+  @keyframes dash { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { #flow path.edge.on { animation: none; } #flow .box rect { transition: none; } }
+  .panel { margin-top: 12px; }
+  .panel dl { display: grid; grid-template-columns: 7.5em 1fr; gap: 6px 14px; margin: 8px 0; }
+  .panel dt { color: var(--muted); }
+  .panel dd { margin: 0; }
+
+  /* step timeline */
+  ol.steps { list-style: none; padding: 0; margin: 16px 0; counter-reset: step; }
+  ol.steps > li { position: relative; padding: 0 0 18px 46px; counter-increment: step; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--c, var(--flow)); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: .9rem;
+  }
+  ol.steps > li::after { content: ""; position: absolute; left: 14px; top: 32px; bottom: 2px; width: 2px; background: var(--line); }
+  ol.steps > li:last-child::after { display: none; }
+  ol.steps .where { font-size: .85rem; color: var(--muted); }
+  ol.steps .who { font-weight: 600; }
+  details { margin: 6px 0; }
+  details summary { cursor: pointer; color: var(--flow); font-size: .9rem; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  footer { margin-top: 64px; color: var(--muted); font-size: .88rem; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>Clean Code 重構範例｜.NET 版運作說明</h1>
+  <p class="lead">這頁說明 <code>dotnet/</code> 裡的程式怎麼運作：一段故意寫得很髒的運費計算 <code>Legacy.Calc()</code>，照 Clean Code 原則重構成 <code>Shipping.ShippingFee()</code>，再用 characterization test 窮舉 728 組輸入，證明重構沒有改變行為。範例用 .NET 10（SDK 10.0.201）、C# 14，只用基礎類別庫（<code>System.Collections.Frozen</code>、<code>System.Collections.Immutable</code>、LINQ），測試用 xUnit 2.9 ＋ coverlet 6.0，可讀性用 lizard 1.24 量化。</p>
+  <nav class="toc" aria-label="目錄">
+    <a href="#overview">1. 全貌</a>
+    <a href="#flow-section">2. 互動流程圖</a>
+    <a href="#journey">3. 一筆運費的旅程</a>
+    <a href="#startup">4. 啟動時發生什麼</a>
+    <a href="#design">5. 關鍵設計</a>
+    <a href="#run">6. 怎麼跑</a>
+  </nav>
+</header>
+
+<section id="overview">
+  <h2>1. 全貌：舊版、重構版，和一個裁判</h2>
+  <p>這份實作<strong>不開任何 port，也沒有外部服務</strong>。舊版和重構版算的是同一套運費規則；<code>Characterization.cs</code> 是裁判，不看規格，只看兩版在同一批輸入下的結果一不一樣。</p>
+  <div class="cards">
+    <div class="card legacy">
+      <h3>Legacy.cs</h3>
+      <div class="port">重構前的原貌 ・ 當作行為的標準答案</div>
+      <p>一個 static class 裡的 <code>Calc(int w, string r, string m, int a, bool c)</code>，lizard 算 82 行（NLOC）、5 層巢狀。故意保留壞味道，不要照這樣寫。</p>
+    </div>
+    <div class="card major">
+      <h3>Shipping.cs</h3>
+      <div class="port">重構版 ・ 唯一 public 的是 <code>ShippingFee(parcel)</code></div>
+      <p>8 個方法，最長 13 行。<code>Parcel</code>（record）、<code>Region</code>、<code>Membership</code>（enum）、<code>InvalidParcelException</code> 各在自己的檔案。類別的 <code>&lt;summary&gt;</code> 用白話寫出全部規則。</p>
+    </div>
+    <div class="card tool">
+      <h3>Characterization.cs ＋ Program.cs</h3>
+      <div class="port">裁判和示範 ・ <code>./run.sh demo</code></div>
+      <p><code>Compare()</code> 窮舉 13 × 2 × 2 × 7 × 2 ＝ 728 組輸入比對兩版，<code>LegacyCodes</code> 負責把舊版的字串換成 enum。<code>Program.cs</code> 先拿 5 筆訂單各算一次，再印出比對結果。</p>
+    </div>
+    <div class="card minor">
+      <h3>ShippingTests.cs ＋ CharacterizationTests.cs</h3>
+      <div class="port">24 個測試 ・ <code>./run.sh test</code></div>
+      <p>一邊測重構版的每條規則，一邊測「兩版結果相同」，以及「故意改壞 1 元會被抓到」。</p>
+    </div>
+  </div>
+
+  <h3>舊版的壞味道，重構版怎麼處理</h3>
+  <table>
+    <thead><tr><th>Clean Code 原則</th><th>舊版 <code>Calc()</code></th><th>重構版</th></tr></thead>
+    <tbody>
+      <tr><td>有意義的命名</td><td><code>w</code>、<code>r</code>、<code>m</code>、<code>a</code>、<code>c</code>、<code>f</code></td><td><code>WeightGrams</code>、<code>Region</code>、<code>Membership</code>、<code>OrderAmount</code>、<code>NeedsColdChain</code></td></tr>
+      <tr><td>函式短小、只做一件事</td><td>1 個方法 82 行，驗證、免運、重量、地區、冷藏全擠在一起</td><td>8 個方法，最長 13 行（<code>WeightFee</code>，大括號也算一行）</td></tr>
+      <tr><td>參數越少越好</td><td>5 個位置參數，呼叫端很容易把 <code>a</code> 和 <code>w</code> 傳反</td><td>1 個 <code>Parcel</code>（參數物件，<code>sealed record</code>），可以用具名參數建立</td></tr>
+      <tr><td>不要魔術數字</td><td><code>1000</code>、<code>5000</code>、<code>500</code>、<code>60</code>、<code>80</code>… 散在各處</td><td><code>LightParcelMaxGrams</code>、<code>OutlyingIslandSurcharge</code> 等 <code>private const</code></td></tr>
+      <tr><td>不要重複（DRY）</td><td>重量級距的 if/else if 抄了 3 份</td><td>只在 <code>WeightFee()</code> 寫一次</td></tr>
+      <tr><td>用 guard clause 取代巢狀</td><td>最深 5 層 if/else</td><td>每個方法最多 1 層，條件不符就提早 <code>return</code></td></tr>
+      <tr><td>用例外取代錯誤碼</td><td>無效輸入回 <code>-1</code>，呼叫端忘了檢查就會把 −1 元當運費</td><td>丟 <code>InvalidParcelException</code>，訊息寫出收到什麼值</td></tr>
+      <tr><td>讓無效狀態無法表示</td><td>地區、會員是 <code>string</code>；拼錯的 <code>"mian"</code> 會被默默當成離島</td><td><code>Region</code>、<code>Membership</code> 是 enum，打成 <code>Region.Mian</code> 連編譯都過不了。C# 的 enum 不能是字串，舊版字串要經過 <code>LegacyCodes.ToRegion()</code> 對應，<code>"mian"</code> 查不到就丟 <code>KeyNotFoundException</code></td></tr>
+      <tr><td>註解說明「為什麼」</td><td><code>// 計算運費</code>、<code>// 加上冷藏費</code>（只是把程式念一遍）</td><td><code>// 離島的物流成本高，行銷部決定不開放免運</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>資料夾結構</h3>
+<pre class="tree">dotnet/
+├── CleanCode.slnx                  solution：src、tests 各一個專案
+├── Directory.Build.props           警告視為錯誤、InvariantGlobalization
+├── run.sh                          ./run.sh demo | test | metrics
+├── src/CleanCode/                  Exe 專案（net10.0），類別和 Program.cs 放一起
+│   ├── Legacy.cs                   重構前：Legacy.Calc(w, r, m, a, c)
+│   ├── Shipping.cs                 重構後：ShippingFee() 和 7 個 private 方法
+│   ├── Parcel.cs                   sealed record：5 個有名字的欄位
+│   ├── Region.cs、Membership.cs    enum
+│   ├── InvalidParcelException.cs   繼承 ArgumentException
+│   ├── LegacyCodes.cs              舊版字串和 enum 的對照表
+│   ├── Characterization.cs         輸入網格、LegacyOutcome()、RefactoredOutcome()、Compare()
+│   ├── Case.cs、Outcome.cs、Comparison.cs   比對用的資料型別
+│   └── Program.cs                  5 筆訂單的對照，加上 728 組的比對結果
+├── tests/CleanCode.Tests/          xUnit 2.9、coverlet
+│   ├── ShippingTests.cs            19 個測試（InlineData 展開後）：重構版的每條規則
+│   └── CharacterizationTests.cs    5 個測試：兩版結果相同、比對抓得到改壞
+<span class="hl">└── how-it-works.html                就是這一頁</span></pre>
+</section>
+
+<section id="flow-section">
+  <h2>2. 互動流程圖：同一筆訂單，兩條路</h2>
+  <p>按鈕是 <code>Program.cs</code> 裡的 5 筆訂單。左邊是舊版 <code>Calc()</code> 的巢狀決策樹，右邊是重構版的方法呼叫。藍色虛線是這筆訂單實際走的路，方框裡的 <code>→</code> 後面是那個方法算出來的值，紅色是錯誤。</p>
+  <div class="phase-buttons" role="group" aria-label="選擇訂單">
+    <button type="button" data-phase-btn="p1" aria-pressed="true">本島・一般・800 元・2500 g</button>
+    <button type="button" data-phase-btn="p2" aria-pressed="false">本島・一般・1000 元</button>
+    <button type="button" data-phase-btn="p3" aria-pressed="false">本島・金卡・600 元・冷藏</button>
+    <button type="button" data-phase-btn="p4" aria-pressed="false">離島・金卡・7200 g・冷藏</button>
+    <button type="button" data-phase-btn="p5" aria-pressed="false">重量 0 g（無效）</button>
+  </div>
+
+  <div class="flow-wrap">
+    <svg id="flow" viewBox="0 0 960 450" role="img" aria-labelledby="flow-title flow-desc">
+      <title id="flow-title">舊版決策樹與重構版方法管線</title>
+      <desc id="flow-desc">左邊是舊版 Calc() 的巢狀 if/else：先驗證輸入，再分本島或離島、金卡或一般、有沒有達到免運門檻，最後查重量級距並加冷藏費。右邊是重構版：ShippingFee 依序呼叫 RejectInvalid、DeliveryFee（裡面判斷 ShipsFree，不免運才算 WeightFee 加 RegionSurcharge），最後加上 ColdChainFee。</desc>
+      <defs>
+        <marker id="arrow-idle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--idle)"/></marker>
+        <marker id="arrow-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--flow)"/></marker>
+        <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--fail)"/></marker>
+      </defs>
+
+      <text class="half bad" x="240" y="24">舊版 Calc()：5 層巢狀</text>
+      <text class="half ok" x="720" y="24">重構版 ShippingFee()：一條管線</text>
+      <line class="divider" x1="480" y1="8" x2="480" y2="442"/>
+
+      <!-- legacy decision tree -->
+      <g class="box" data-node="root"><rect x="140" y="44" width="200" height="32"/><text class="mono" x="240" y="64">w &gt; 0 &amp;&amp; a &gt;= 0</text></g>
+      <g class="box" data-node="invalid"><rect x="20" y="104" width="100" height="32"/><text class="mono" x="70" y="124">return -1</text></g>
+      <g class="box" data-node="main"><rect x="220" y="104" width="140" height="32"/><text class="mono" x="290" y="124">r == "main"</text></g>
+      <g class="box" data-node="gold"><rect x="130" y="164" width="140" height="32"/><text class="mono" x="200" y="184">m == "gold"</text></g>
+      <g class="box" data-node="out"><rect x="330" y="164" width="140" height="32"/><text x="400" y="184">重量級距 #3 ＋80</text></g>
+      <g class="box" data-node="a500"><rect x="40" y="224" width="110" height="32"/><text class="mono" x="95" y="244">a &gt;= 500</text></g>
+      <g class="box" data-node="a1000"><rect x="200" y="224" width="110" height="32"/><text class="mono" x="255" y="244">a &gt;= 1000</text></g>
+      <g class="box" data-node="outcold"><rect x="340" y="224" width="120" height="32"/><text class="mono" x="400" y="244">if (c) ＋100</text></g>
+      <g class="box" data-node="free1"><rect x="10" y="284" width="80" height="32"/><text class="mono" x="50" y="304">f = 0</text></g>
+      <g class="box" data-node="tier1"><rect x="100" y="284" width="80" height="32"/><text x="140" y="304">重量級距 #1</text></g>
+      <g class="box" data-node="free2"><rect x="190" y="284" width="80" height="32"/><text class="mono" x="230" y="304">f = 0</text></g>
+      <g class="box" data-node="tier2"><rect x="280" y="284" width="80" height="32"/><text x="320" y="304">重量級距 #2</text></g>
+      <g class="box" data-node="cold"><rect x="120" y="344" width="140" height="32"/><text class="mono" x="190" y="364">if (c) ＋50</text></g>
+      <g class="box" data-node="ret"><rect x="290" y="344" width="120" height="32"/><text class="mono" x="350" y="364">return f</text></g>
+
+      <path class="edge" data-edge="root-invalid" d="M170 76 L92 102"/>
+      <path class="edge" data-edge="root-main" d="M290 76 V102"/>
+      <path class="edge" data-edge="main-gold" d="M250 136 L216 162"/>
+      <path class="edge" data-edge="main-out" d="M330 136 L380 162"/>
+      <path class="edge" data-edge="gold-a500" d="M170 196 L117 222"/>
+      <path class="edge" data-edge="gold-a1000" d="M230 196 L248 222"/>
+      <path class="edge" data-edge="out-outcold" d="M400 196 V222"/>
+      <path class="edge" data-edge="a500-free1" d="M75 256 L56 282"/>
+      <path class="edge" data-edge="a500-tier1" d="M115 256 L135 282"/>
+      <path class="edge" data-edge="a1000-free2" d="M238 256 L232 282"/>
+      <path class="edge" data-edge="a1000-tier2" d="M275 256 L313 282"/>
+      <path class="edge" data-edge="free1-cold" d="M50 316 L138 342"/>
+      <path class="edge" data-edge="tier1-cold" d="M140 316 L168 342"/>
+      <path class="edge" data-edge="free2-cold" d="M230 316 L206 342"/>
+      <path class="edge" data-edge="tier2-cold" d="M320 316 L248 342"/>
+      <path class="edge" data-edge="cold-ret" d="M260 360 H288"/>
+      <path class="edge" data-edge="outcold-ret" d="M400 256 L376 342"/>
+
+      <text class="small" x="120" y="86">否</text>
+      <text class="small" x="310" y="94">是</text>
+      <text class="small" x="206" y="150">本島</text>
+      <text class="small" x="388" y="146">離島</text>
+      <text class="small" x="104" y="212">金卡</text>
+      <text class="small" x="270" y="210">一般</text>
+      <text class="small" x="46" y="270">是</text>
+      <text class="small" x="144" y="270">否</text>
+      <text class="small" x="216" y="270">是</text>
+      <text class="small" x="318" y="270">否</text>
+
+      <text class="result" x="240" y="410" data-left-result></text>
+      <text class="small" x="240" y="432" data-left-note></text>
+
+      <!-- refactored pipeline -->
+      <g class="box" data-node="r-entry"><rect x="560" y="44" width="260" height="32"/><text class="mono" x="690" y="64" data-label="ShippingFee(parcel)"></text></g>
+      <g class="box" data-node="r-reject"><rect x="595" y="104" width="190" height="32"/><text class="mono" x="690" y="124" data-label="RejectInvalid()"></text></g>
+      <g class="box" data-node="r-error"><rect x="796" y="104" width="160" height="32"/><text class="mono" x="876" y="124" style="font-size: 11px">InvalidParcelException</text></g>
+      <g class="box" data-node="r-delivery"><rect x="575" y="164" width="230" height="32"/><text class="mono" x="690" y="184" data-label="DeliveryFee()"></text></g>
+      <g class="box" data-node="r-free"><rect x="575" y="224" width="230" height="32"/><text class="mono" x="690" y="244" data-label="ShipsFree()"></text></g>
+      <g class="box" data-node="r-zero"><rect x="840" y="224" width="110" height="32"/><text x="895" y="244">免運：0</text></g>
+      <g class="box" data-node="r-weight"><rect x="500" y="284" width="190" height="32"/><text class="mono" x="595" y="304" data-label="WeightFee()"></text></g>
+      <g class="box" data-node="r-region"><rect x="700" y="284" width="210" height="32"/><text class="mono" x="805" y="304" data-label="RegionSurcharge()"></text></g>
+      <g class="box" data-node="r-cold"><rect x="575" y="344" width="230" height="32"/><text class="mono" x="690" y="364" data-label="ColdChainFee()"></text></g>
+
+      <path class="edge" data-edge="r-entry-reject" d="M690 76 V102"/>
+      <path class="edge" data-edge="r-reject-error" d="M785 120 H794"/>
+      <path class="edge" data-edge="r-reject-delivery" d="M690 136 V162"/>
+      <path class="edge" data-edge="r-delivery-free" d="M690 196 V222"/>
+      <path class="edge" data-edge="r-free-zero" d="M805 240 H838"/>
+      <path class="edge" data-edge="r-free-weight" d="M640 256 L605 282"/>
+      <path class="edge" data-edge="r-free-region" d="M740 256 L785 282"/>
+      <path class="edge" data-edge="r-weight-cold" d="M595 316 L650 342"/>
+      <path class="edge" data-edge="r-region-cold" d="M805 316 L740 342"/>
+      <path class="edge" data-edge="r-zero-cold" d="M935 256 V360 H807"/>
+
+      <text class="result" x="720" y="410" data-right-result></text>
+      <text class="small" x="720" y="432" data-right-note></text>
+    </svg>
+
+    <div class="panel" data-panel="p1">
+      <h3>本島、一般會員、訂單 800 元、2500 公克、常溫 → 100 元</h3>
+      <dl>
+        <dt>舊版</dt><dd><code>Legacy.Calc(2500, "main", "normal", 800, false)</code>：過了驗證 → 本島 → 一般會員 → 800 &lt; 1000 不免運 → 在<strong>第 5 層巢狀</strong>查第 2 份重量級距：2500 ≤ 5000，100 元 → 常溫不加錢。</dd>
+        <dt>重構版</dt><dd><code>ShipsFree()</code> 回 <code>false</code>（未達一般會員門檻 1000）→ <code>WeightFee(2500)</code> 回 100、<code>RegionSurcharge(Region.MainIsland)</code> 回 0 → <code>ColdChainFee()</code> 回 0。</dd>
+        <dt>對應測試</dt><dd><code>ChargesByWeightTier</code>（1001～5000 公克都是 100）、<code>FreeShippingThreshold_DependsOnMembership</code>（一般會員 999 元不免運）</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="p2" hidden>
+      <h3>本島、一般會員、訂單 1000 元、800 公克、常溫 → 0 元</h3>
+      <dl>
+        <dt>舊版</dt><dd><code>Legacy.Calc(800, "main", "normal", 1000, false)</code>：本島 → 一般會員 → 1000 ≥ 1000，<code>f = 0</code>。重量完全沒被看。</dd>
+        <dt>重構版</dt><dd><code>ShipsFree()</code> 回 <code>true</code>，<code>DeliveryFee()</code> 提早 <code>return 0</code>，不呼叫 <code>WeightFee()</code>。這就是 guard clause：條件成立就離開，不用再包一層 else。</dd>
+        <dt>對應測試</dt><dd><code>FreeShippingThreshold_DependsOnMembership</code>（一般會員剛好 1000 元免運）</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="p3" hidden>
+      <h3>本島、金卡會員、訂單 600 元、2500 公克、冷藏 → 50 元</h3>
+      <dl>
+        <dt>舊版</dt><dd><code>Legacy.Calc(2500, "main", "gold", 600, true)</code>：本島 → 金卡 → 600 ≥ 500，<code>f = 0</code> → 跳出巢狀後 <code>if (c)</code> 加 50。冷藏照收這條規則，要讀完整段才看得出來。</dd>
+        <dt>重構版</dt><dd><code>DeliveryFee()</code> 回 0（金卡門檻 500），<code>ColdChainFee()</code> 回 50。規則寫在註解裡：<code>// 冷藏車是另外跟物流商計費的，所以免運也要收</code>。</dd>
+        <dt>對應測試</dt><dd><code>ColdChainFee_IsChargedEvenWhenShippingIsFree</code>、<code>FreeShippingThreshold_DependsOnMembership</code>（金卡 500 元免運）</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="p4" hidden>
+      <h3>離島、金卡會員、訂單 3000 元、7200 公克、冷藏 → 340 元</h3>
+      <dl>
+        <dt>舊版</dt><dd><code>Legacy.Calc(7200, "outlying", "gold", 3000, true)</code>：<code>r == "main"</code> 不成立就走 else，用<strong>第 3 份</strong>重量級距：<code>100 + ((7200 - 5000 + 999) / 1000) * 20 + 80</code> ＝ 240，再加冷藏 100。這裡沒有看會員等級，是因為離島本來就不免運，但程式沒寫出這個理由。</dd>
+        <dt>重構版</dt><dd><code>ShipsFree()</code> 第一行就因為離島回 <code>false</code> → <code>WeightFee(7200)</code>：超過 5000 的 2200 公克算 3 公斤，100 ＋ 60 ＝ 160 → <code>RegionSurcharge()</code> 80 → <code>ColdChainFee()</code> 離島冷藏 100。</dd>
+        <dt>對應測試</dt><dd><code>OutlyingIsland_NeverShipsFree</code>、<code>ColdChainFee_DependsOnRegion</code>、<code>ChargesByWeightTier</code>（6001 公克是 140）</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="p5" hidden>
+      <h3>重量 0 公克 → 舊版 -1，重構版丟例外</h3>
+      <dl>
+        <dt>舊版</dt><dd><code>Legacy.Calc(0, "main", "normal", 800, false)</code> 第一個判斷就不成立，回 <code>-1</code>。呼叫端如果沒檢查，就會把「−1 元」當成運費。</dd>
+        <dt>重構版</dt><dd><code>RejectInvalid()</code> 丟 <code>InvalidParcelException</code>，<code>Message</code> 是「重量必須大於 0 公克，收到 0」，後面的方法都不會執行。</dd>
+        <dt>行為有變</dt><dd>這是這次重構唯一刻意改變的地方：錯誤從回傳值變成例外。<code>Characterization.cs</code> 把舊版的 <code>-1</code> 和重構版的 <code>InvalidParcelException</code> 都換成 <code>Outcome.Invalid</code> 再比較，所以 200 組無效輸入一樣算「結果相同」。</dd>
+        <dt>對應測試</dt><dd><code>Rejects_NonPositiveWeight</code>、<code>LegacyErrorCode_MapsToRefactoredError</code></dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section id="journey">
+  <h2>3. 一筆運費的旅程</h2>
+  <p>以「離島、金卡會員、訂單 3000 元、7200 公克、冷藏」為例，也就是 <code>Program.cs</code> 的第 4 筆。從示範程式建立 <code>Parcel</code> 到印出 340，經過這些程式碼：</p>
+  <ol class="steps">
+    <li style="--c: var(--tool)">
+      <div class="who">建立參數物件</div>
+      <div class="where"><code>Parcel.cs</code>、<code>Program.cs</code> 的 <code>samples</code></div>
+      <p>五個欄位都有名字，地區和會員是 enum，拼不錯字；兩個 enum 是不同型別，位置放反會編譯失敗。<code>Parcel</code> 是 <code>sealed record</code>，屬性只能在建立時設定，建好就不能改，要改只能用 <code>with</code> 做一份新的。</p>
+<pre>public sealed record Parcel(
+    int WeightGrams,
+    Region Region,
+    Membership Membership,
+    int OrderAmount,
+    bool NeedsColdChain);
+
+<span class="c">// Program.cs 的 samples 第 4 筆</span>
+new(7200, Region.OutlyingIsland, Membership.Gold, 3000, true),</pre>
+    </li>
+    <li style="--c: var(--major)">
+      <div class="who">進入點只說「做了哪兩件事」</div>
+      <div class="where"><code>Shipping.cs</code> 的 <code>ShippingFee()</code>、<code>RejectInvalid()</code></div>
+      <p>先擋掉無效輸入，再把「配送費」和「冷藏費」相加。整個方法讀起來就是一句話。重量 7200、金額 3000 都合法，<code>RejectInvalid()</code> 不做事。</p>
+<pre>public static int ShippingFee(Parcel parcel)
+{
+    RejectInvalid(parcel);
+    return DeliveryFee(parcel) + ColdChainFee(parcel);
+}</pre>
+    </li>
+    <li style="--c: var(--major)">
+      <div class="who">判斷免不免運</div>
+      <div class="where"><code>Shipping.cs</code> 的 <code>DeliveryFee()</code>、<code>ShipsFree()</code></div>
+      <p>離島第一行就回 <code>false</code>，註解寫的是「為什麼」離島不免運，而不是「這裡在判斷離島」。</p>
+<pre>private static bool ShipsFree(Parcel parcel)
+{
+    <span class="c">// 離島的物流成本高，行銷部決定不開放免運</span>
+    if (parcel.Region == Region.OutlyingIsland)
+    {
+        return false;
+    }
+    return parcel.OrderAmount &gt;= FreeShippingThreshold[parcel.Membership];
+}</pre>
+    </li>
+    <li style="--c: var(--major)">
+      <div class="who">算重量費和地區加價</div>
+      <div class="where"><code>Shipping.cs</code> 的 <code>WeightFee()</code>、<code>CeilDiv()</code>、<code>RegionSurcharge()</code></div>
+      <p>7200 超過 5000，多出的 2200 公克用 <code>CeilDiv(2200, 1000)</code> 算成 3 公斤，<code>100 + 3 × 20 = 160</code>。離島再加 <code>OutlyingIslandSurcharge</code> 80，配送費 240。舊版裡同一段級距邏輯抄了 3 次，這裡只有一份。</p>
+<pre>private static int WeightFee(int weightGrams)
+{
+    if (weightGrams &lt;= LightParcelMaxGrams)
+    {
+        return LightParcelFee;
+    }
+    if (weightGrams &lt;= StandardParcelMaxGrams)
+    {
+        return StandardParcelFee;
+    }
+    var extraKilograms = CeilDiv(weightGrams - StandardParcelMaxGrams, GramsPerKilogram);
+    return StandardParcelFee + extraKilograms * FeePerExtraKilogram;
+}</pre>
+    </li>
+    <li style="--c: var(--major)">
+      <div class="who">加冷藏費</div>
+      <div class="where"><code>Shipping.cs</code> 的 <code>ColdChainFee()</code></div>
+      <p>離島冷藏查 <code>ColdChainFeeByRegion</code> 是 100，總計 340。</p>
+<pre>private static int ColdChainFee(Parcel parcel)
+{
+    <span class="c">// 冷藏車是另外跟物流商計費的，所以免運也要收</span>
+    return parcel.NeedsColdChain ? ColdChainFeeByRegion[parcel.Region] : 0;
+}</pre>
+    </li>
+    <li style="--c: var(--tool)">
+      <div class="who">舊版也算一次，並排印出</div>
+      <div class="where"><code>Program.cs</code> 的 <code>ShowSamples()</code></div>
+      <p>把 <code>Parcel</code> 拆回 5 個位置參數，enum 用 <code>LegacyCodes.ToCode()</code> 換回字串，餵給 <code>Legacy.Calc()</code>，印出 <code>離島、金卡會員、訂單 3000 元、7200 公克、冷藏 → 舊版 340｜重構版 340</code>。</p>
+    </li>
+    <li style="--c: var(--minor)">
+      <div class="who">裁判窮舉 728 組</div>
+      <div class="where"><code>Characterization.cs</code> 的 <code>Compare()</code></div>
+      <p>同樣的對照做 728 次。<code>LegacyOutcome()</code> 把 <code>-1</code> 換成 <code>Outcome.Invalid</code>，<code>RefactoredOutcome()</code> 先用 <code>LegacyCodes</code> 把字串換成 enum 建出 <code>Parcel</code>，再把 <code>InvalidParcelException</code> 換成 <code>Outcome.Invalid</code>，其餘直接比金額。</p>
+      <details><summary>看 Compare() 的程式碼</summary>
+<pre>public static Comparison Compare() =&gt; Compare(RefactoredOutcome);
+
+<span class="c">/// &lt;summary&gt;拿 candidate 的結果去比對舊版。不帶參數時比對重構版；測試會傳入故意改壞的版本。&lt;/summary&gt;</span>
+public static Comparison Compare(Func&lt;Case, Outcome&gt; candidate)
+{
+    var results = InputGrid()
+        .Select(input =&gt; (Case: input, Old: LegacyOutcome(input), New: candidate(input)))
+        .ToImmutableArray();
+    return new Comparison(
+        Total: results.Length,
+        Invalid: results.Count(result =&gt; result.Old.IsInvalid &amp;&amp; result.New.IsInvalid),
+        Mismatches: [.. results.Where(result =&gt; result.Old != result.New).Select(result =&gt; result.Case)]);
+}</pre>
+      </details>
+    </li>
+  </ol>
+
+  <h3>每種輸入問題在哪裡被擋下</h3>
+  <table>
+    <thead><tr><th>狀況</th><th>舊版</th><th>重構版</th></tr></thead>
+    <tbody>
+      <tr><td>重量 ≤ 0</td><td>第一個 <code>if</code> 不成立，回 <code>-1</code></td><td><code>RejectInvalid()</code> 丟 <code>InvalidParcelException</code>：「重量必須大於 0 公克，收到 0」</td></tr>
+      <tr><td>訂單金額 &lt; 0</td><td>同上，回 <code>-1</code></td><td><code>RejectInvalid()</code> 丟 <code>InvalidParcelException</code>：「訂單金額不能是負數，收到 -1」</td></tr>
+      <tr><td>地區拼錯（<code>"mian"</code>）</td><td>不是 <code>"main"</code> 就走 else，默默當成離島收 180 元</td><td>C# 的 enum 不能是字串，舊字串要經過 <code>LegacyCodes.ToRegion("mian")</code> 才變成 <code>Region</code>，查不到就丟 <code>KeyNotFoundException</code>，根本做不出這種 <code>Parcel</code>。直接寫 C# 時打成 <code>Region.Mian</code> 是編譯錯誤</td></tr>
+      <tr><td>會員等級拼錯（<code>"glod"</code>）</td><td>不是 <code>"gold"</code> 就當一般會員</td><td><code>LegacyCodes.ToMembership("glod")</code> 丟 <code>KeyNotFoundException</code></td></tr>
+      <tr><td>參數順序傳錯（金額和重量對調）</td><td>照算，結果錯但不會報錯</td><td><code>Parcel</code> 是 record，可以用具名參數建立（<code>new Parcel(WeightGrams: 2500, …)</code>，<code>ShippingTests</code> 的 <code>Baseline</code> 就這樣寫），對調了一眼看得出來。重量和金額都是 <code>int</code>，只用位置參數還是可能放反；地區和會員是不同的 enum，放反會編譯失敗</td></tr>
+    </tbody>
+  </table>
+  <p class="note">後三列都不在 728 組網格裡（網格只放合法的字串），所以 characterization test 證明不到。這是窮舉比對的極限：它只能證明「測過的輸入」行為相同。拼錯字這類輸入，舊版和重構版本來就不一樣，而且是重構版比較對。</p>
+</section>
+
+<section id="startup">
+  <h2>4. 啟動時發生什麼</h2>
+  <div class="cols">
+    <div class="card tool">
+      <h3>Program.cs</h3>
+      <p>用 top-level statements 寫，依序建好 <code>regionLabels</code>、<code>membershipLabels</code>（兩張 <code>FrozenDictionary</code>）和 <code>samples</code> 陣列，接著呼叫 <code>ShowSamples()</code>：對 5 筆訂單各呼叫一次 <code>Legacy.Calc()</code> 和 <code>Shipping.ShippingFee()</code>。再呼叫 <code>ShowCharacterization()</code>：跑一次 <code>Compare()</code>，印出相同、無效、不同的組數（相同 ＝ 總數 − 無效 − 不同）。沒有設定檔，也不讀環境變數。<code>./run.sh demo</code> 用 <code>dotnet run -c Release</code>，第一次會先建置。</p>
+    </div>
+    <div class="card minor">
+      <h3>輸入網格</h3>
+      <p><code>InputGrid()</code> 用 LINQ 查詢語法連寫 5 個 <code>from</code>，把 <code>Weights</code>（13 個）、<code>Regions</code>（2）、<code>Memberships</code>（2）、<code>OrderAmounts</code>（7）、<code>ColdChain</code>（2）乘開，最後一個 <code>from</code> 變化最快，順序和 Python 版的 <code>itertools.product</code> 一樣。每個門檻都取「剛好、少 1、多 1」，例如 999、1000、1001。</p>
+    </div>
+    <div class="card major">
+      <h3>測試</h3>
+      <p>xUnit 從 2 個測試類別找到 13 個測試方法，<code>[Theory]</code> 的 <code>[InlineData]</code> 展開後共 24 個。<code>CharacterizationTests</code> 的每個測試都會重新跑一次 <code>Compare()</code>，整套測試約 30 毫秒。coverlet 量到 <code>Shipping</code>、<code>Characterization</code>、<code>Legacy</code> 都是 100%；整個專案 77.5%，沒涵蓋的是測試不會跑的 <code>Program.cs</code> 和只有 demo 用的 <code>LegacyCodes.ToCode()</code>。</p>
+    </div>
+  </div>
+<pre><span class="c">// Characterization.cs</span>
+<span class="c">// 每個邊界都取「剛好、少 1、多 1」</span>
+private static readonly ImmutableArray&lt;int&gt; Weights =
+    [-1, 0, 1, 999, 1000, 1001, 4999, 5000, 5001, 5999, 6000, 6001, 12345];
+private static readonly ImmutableArray&lt;string&gt; Regions = ["main", "outlying"];
+private static readonly ImmutableArray&lt;string&gt; Memberships = ["normal", "gold"];
+private static readonly ImmutableArray&lt;int&gt; OrderAmounts = [-1, 0, 499, 500, 999, 1000, 5000];
+private static readonly ImmutableArray&lt;bool&gt; ColdChain = [false, true];</pre>
+</section>
+
+<section id="design">
+  <h2>5. 關鍵設計</h2>
+
+  <h3>先有裁判，才能放心重構</h3>
+  <p>重構的定義是「不改變外部行為」。舊版沒有規格文件，只有程式本身，所以拿舊版當標準答案：同一批輸入，兩版結果要一模一樣。這種測試叫 characterization test 或 golden master，適合用在「看不懂但不能改壞」的舊程式。</p>
+
+  <h3>裁判自己也要被測</h3>
+  <p>如果 <code>Compare()</code> 寫錯，永遠回「0 組不同」，那 728 組全部相同就沒有意義。所以 <code>Compare()</code> 有一個多載可以傳入要比對的版本，<code>Comparison_CatchesAOneDollarChange</code> 傳入一個「離島冷藏多收 1 元」的版本，斷言剛好抓到 11 × 2 × 6 ＝ 132 組不一致（離島冷藏的有效輸入數）。</p>
+<pre>static Outcome OffByOneOnOutlyingColdChain(Case input)
+{
+    var outcome = Characterization.RefactoredOutcome(input);
+    if (!outcome.IsInvalid &amp;&amp; input.Region == "outlying" &amp;&amp; input.Cold)
+    {
+        return new Outcome(outcome.Fee + 1);
+    }
+    return outcome;
+}</pre>
+
+  <h3>可讀性用數字說話</h3>
+  <p><code>./run.sh metrics</code> 用 lizard 量 <code>Legacy.cs</code> 和 <code>Shipping.cs</code> 的每個方法。Python 版另外用 ruff 的 PLR2004 數比較式裡的魔術數字，那是 Python 專用的規則，.NET 版不量這一項。</p>
+  <table>
+    <thead><tr><th>指標</th><th>舊版 <code>Calc()</code></th><th>重構版（最大的那個方法）</th></tr></thead>
+    <tbody>
+      <tr><td>方法數</td><td class="num">1</td><td>8</td></tr>
+      <tr><td>最長方法（NLOC，不含空行和註解，只有大括號的行也算）</td><td class="num">82</td><td>13（<code>WeightFee</code>）</td></tr>
+      <tr><td>循環複雜度（CCN，獨立路徑數）</td><td class="num">15</td><td>3（<code>RejectInvalid</code>、<code>WeightFee</code>）</td></tr>
+      <tr><td>認知複雜度（CogC，巢狀越深扣越多）</td><td class="num">45</td><td>2（<code>RejectInvalid</code>、<code>WeightFee</code>）</td></tr>
+      <tr><td>參數數量</td><td class="num">5</td><td>2（<code>CeilDiv</code>；對外的 <code>ShippingFee</code> 只有 1 個）</td></tr>
+      <tr><td>整個檔案的 NLOC</td><td class="num">86</td><td>76（<code>Shipping.cs</code>；<code>Parcel</code>、兩個 enum、例外在另外 4 個檔案，共 21 行）</td></tr>
+    </tbody>
+  </table>
+  <p class="note">舊版 82 行，是 Python 版 37 行的兩倍多，差在格式不在邏輯：C# 的大括號照 <code>dotnet format</code> 的預設各佔一行，lizard 也把這些行算進 NLOC；變數還得先宣告 <code>int f;</code>（C# 規定變數讀取前一定要有值）。CCN、CogC、參數數量和 Python 版一模一樣。重構版的方法拆法也和 Python 相同，每個方法的 CCN 都對得上；唯一的差別是 <code>RegionSurcharge</code> 的 CogC：這裡量到 0，Python 版是 1。lizard 1.24.3 對 C# 三元運算子（<code>?:</code>）的 CogC 時算時不算（CCN 都有算），是工具的問題，不是程式不同。代價在最後一列：重構版加上型別檔共 97 行，比舊版多一些；Python 版多了一半以上，這裡差得少，是因為舊版的大括號已經佔掉很多行。</p>
+
+  <h3>其他</h3>
+  <table>
+    <thead><tr><th>設計</th><th>做法</th><th>在哪裡</th></tr></thead>
+    <tbody>
+      <tr><td>舊版保持原樣</td><td>照 Python 版逐行搬：縮寫、5 個位置參數、巢狀、魔術數字、<code>f = f + 50</code> 都不改，檔頭註解說明為什麼留著它。編譯器和分析器對它沒有發警告，所以不需要局部抑制</td><td><code>Legacy.cs</code></td></tr>
+      <tr><td>只有一個 public 方法</td><td>其他方法和所有常數都是 <code>private</code>，外面只需要知道 <code>ShippingFee()</code></td><td><code>Shipping.cs</code></td></tr>
+      <tr><td>對照表取代 if/else</td><td>門檻和冷藏費會依會員、地區而不同，用 <code>FrozenDictionary</code> 查表（建好就不能改，查詢有最佳化），新增會員等級時改一個地方。冷藏費的表叫 <code>ColdChainFeeByRegion</code>，因為 C# 的欄位不能和 <code>ColdChainFee()</code> 方法同名</td><td><code>FreeShippingThreshold</code>、<code>ColdChainFeeByRegion</code></td></tr>
+      <tr><td>舊字串和 enum 的對照集中一處</td><td>Python 版直接把 <code>"main"</code> 當 enum 的值；C# 的 enum 底層是整數，所以雙向對照放在 <code>LegacyCodes</code>：比對時用 <code>ToRegion()</code>、<code>ToMembership()</code>，demo 呼叫舊版時用 <code>ToCode()</code></td><td><code>LegacyCodes.cs</code></td></tr>
+      <tr><td>錯誤型別</td><td><code>InvalidParcelException</code> 繼承 <code>ArgumentException</code>（對應 Python 的 <code>ValueError</code>），只傳訊息、不傳 paramName，<code>Message</code> 後面才不會多出 <code>(Parameter '...')</code></td><td><code>InvalidParcelException.cs</code></td></tr>
+      <tr><td>整數金額</td><td>新台幣元用 <code>int</code>，<code>CeilDiv()</code> 用 <code>(a + b - 1) / b</code> 無條件進位，不經過浮點數。C# 的整數除法往 0 截斷，照抄 Python 的 <code>-(-a // b)</code> 會變成無條件捨去；這裡只會收到正數，所以這個寫法成立</td><td><code>CeilDiv()</code></td></tr>
+      <tr><td>比對結果的型別</td><td>Python 的 <code>int | "invalid"</code> 改成 <code>readonly record struct Outcome(int? Fee)</code>，<code>Fee</code> 是 null 就是無效（<code>Outcome.Invalid</code>）。<code>Case</code> 也是 record struct，比較的是值，<code>Assert.Distinct</code> 能直接檢查網格沒有重複</td><td><code>Outcome.cs</code>、<code>Case.cs</code></td></tr>
+      <tr><td>用多載取代預設參數</td><td>C# 的預設參數只能是常數，不能是方法，所以 <code>Compare()</code> 轉呼叫 <code>Compare(RefactoredOutcome)</code></td><td><code>Characterization.cs</code></td></tr>
+      <tr><td>測試的預設訂單</td><td>不寫帶預設參數的工廠函式，改用一個 <code>Baseline</code> record，每個測試用 <code>with</code> 只改相關欄位。錯誤訊息比對整句（Python 版只比開頭）</td><td><code>ShippingTests.cs</code></td></tr>
+      <tr><td>輸出不受語系影響</td><td>開 <code>InvariantGlobalization</code>：有些語系的負號是 U+2212，會讓 <code>-1</code> 印得和 Python 版不一樣</td><td><code>Directory.Build.props</code></td></tr>
+      <tr><td>規則寫在檔頭</td><td><code>Shipping</code> 類別的 <code>&lt;summary&gt;</code> 用白話列出 4 條規則，比讀程式快</td><td><code>Shipping.cs</code> 第 5～13 行</td></tr>
+      <tr><td>三種語言結果一致</td><td>Python、Rust 版本照同一套規則實作，demo 輸出用 <code>diff</code> 比對逐字相同</td><td>PoC 的 README「怎麼跑」</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="run">
+  <h2>6. 怎麼跑</h2>
+<pre><span class="c"># 在 dotnet/ 底下</span>
+./run.sh demo                      <span class="c"># dotnet run -c Release：5 筆對照 ＋ 728 組比對結果</span>
+./run.sh test                      <span class="c"># dotnet test：24 個測試</span>
+./run.sh metrics                   <span class="c"># uvx lizard：可讀性指標</span>
+
+<span class="c"># 只跑比對的測試（5 個）</span>
+dotnet test --filter "FullyQualifiedName~CharacterizationTests"
+
+<span class="c"># 量覆蓋率（coverlet，報告在 tests/CleanCode.Tests/TestResults/*/coverage.cobertura.xml）</span>
+dotnet test --collect:"XPlat Code Coverage"
+
+<span class="c"># 自己玩：改一條規則，看比對抓不抓得到</span>
+<span class="c"># 把 Shipping.cs 的 OutlyingIslandSurcharge 從 80 改成 90，再跑 demo</span>
+./run.sh demo                      <span class="c"># 最後一行變成「結果不同：264 組」</span>
+
+<span class="c"># 確認三種語言輸出相同（在 PoC 根目錄）</span>
+diff &lt;(python/run.sh demo) &lt;(dotnet/run.sh demo) &amp;&amp; diff &lt;(python/run.sh demo) &lt;(rust/run.sh demo)</pre>
+
+  <p>這份實作沒有 port，也不讀環境變數。想換情境就改這些地方：</p>
+  <table>
+    <thead><tr><th>想做的事</th><th>改哪裡</th><th>例子</th></tr></thead>
+    <tbody>
+      <tr><td>改一條運費規則</td><td><code>Shipping.cs</code> 的常數</td><td>把 <code>FreeShippingThreshold</code> 的金卡門檻改成 600：重構版改一個數字，舊版要找到埋在第 4 層的 <code>500</code></td></tr>
+      <tr><td>多比對幾組輸入</td><td><code>Characterization.cs</code> 的 <code>Weights</code> 等陣列</td><td>加入 <code>10_000_000</code> 公克，確認大數字兩版也一致</td></tr>
+      <tr><td>加一筆示範訂單</td><td><code>Program.cs</code> 的 <code>samples</code></td><td><code>new(1000, Region.OutlyingIsland, Membership.Normal, 0, false)</code></td></tr>
+      <tr><td>看單一檔案的指標</td><td><code>uvx lizard -Ecognitive src/CleanCode/Shipping.cs</code></td><td>加 <code>-C 3</code>，CCN 超過 3 的方法會被列成警告</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  實驗設計、成功標準和結論，請看 <a href="../README.md">PoC 的 README</a>。同樣的說明也有 <a href="../python/how-it-works.html">Python 版</a> 和 <a href="../rust/how-it-works.html">Rust 版</a>。
+</footer>
+
+</main>
+<script>
+  const MAIN_PATH = ["r-entry-reject", "r-reject-delivery", "r-delivery-free"];
+  const SCENARIOS = {
+    p1: {
+      legacy: ["root-main", "main-gold", "gold-a1000", "a1000-tier2", "tier2-cold", "cold-ret"],
+      refactored: [...MAIN_PATH, "r-free-weight", "r-free-region", "r-weight-cold", "r-region-cold"],
+      values: { "r-entry": "100", "r-reject": "通過", "r-delivery": "100", "r-free": "false", "r-weight": "100", "r-region": "0", "r-cold": "0" },
+      leftResult: "舊版回傳 100", leftNote: "經過 4 個分支，在第 5 層巢狀查第 2 份重量級距",
+      rightResult: "100 ＋ 0 ＝ 100", rightNote: "每個方法最多 1 層 if",
+    },
+    p2: {
+      legacy: ["root-main", "main-gold", "gold-a1000", "a1000-free2", "free2-cold", "cold-ret"],
+      refactored: [...MAIN_PATH, "r-free-zero", "r-zero-cold"],
+      values: { "r-entry": "0", "r-reject": "通過", "r-delivery": "0", "r-free": "true", "r-cold": "0" },
+      leftResult: "舊版回傳 0", leftNote: "在第 4 層巢狀得到 f = 0，重量完全沒看",
+      rightResult: "0（免運）＋ 0 ＝ 0", rightNote: "DeliveryFee() 提早 return 0",
+    },
+    p3: {
+      legacy: ["root-main", "main-gold", "gold-a500", "a500-free1", "free1-cold", "cold-ret"],
+      refactored: [...MAIN_PATH, "r-free-zero", "r-zero-cold"],
+      values: { "r-entry": "50", "r-reject": "通過", "r-delivery": "0", "r-free": "true", "r-cold": "50" },
+      leftResult: "舊版回傳 50", leftNote: "免運後跳出巢狀，再加冷藏 50",
+      rightResult: "0（免運）＋ 50（冷藏照收）＝ 50", rightNote: "冷藏費是獨立的方法，不受免運影響",
+    },
+    p4: {
+      legacy: ["root-main", "main-out", "out-outcold", "outcold-ret"],
+      refactored: [...MAIN_PATH, "r-free-weight", "r-free-region", "r-weight-cold", "r-region-cold"],
+      values: { "r-entry": "340", "r-reject": "通過", "r-delivery": "240", "r-free": "false", "r-weight": "160", "r-region": "80", "r-cold": "100" },
+      leftResult: "舊版回傳 340", leftNote: "離島走 else，用第 3 份重量級距再 ＋80",
+      rightResult: "(160 ＋ 80) ＋ 100 ＝ 340", rightNote: "離島不免運的理由寫在 ShipsFree() 的註解",
+    },
+    p5: {
+      legacy: ["root-invalid"],
+      refactored: ["r-entry-reject"], fail: ["r-reject-error"],
+      values: { "r-reject": "丟例外" },
+      leftResult: "舊版回傳 -1", leftNote: "錯誤碼和運費混在同一個回傳值",
+      rightResult: "InvalidParcelException", rightNote: "重量必須大於 0 公克，收到 0",
+    },
+  };
+  const RIGHT_ENDPOINTS = { "r-reject-error": "r-error", "r-free-zero": "r-zero" };
+
+  function activeNodes(edges) {
+    // 邊的名稱是「起點-終點」，把路徑經過的節點都標成 active
+    const nodes = new Set();
+    edges.forEach((edge) => {
+      const parts = edge.startsWith("r-") ? edge.slice(2).split("-").map((part) => `r-${part}`) : edge.split("-");
+      parts.forEach((part) => nodes.add(part));
+      if (RIGHT_ENDPOINTS[edge]) nodes.add(RIGHT_ENDPOINTS[edge]);
+    });
+    return nodes;
+  }
+
+  function showScenario(id) {
+    const scenario = SCENARIOS[id];
+    const fail = scenario.fail || [];
+    const on = [...scenario.legacy, ...scenario.refactored];
+    const active = activeNodes([...on, ...fail]);
+    document.querySelectorAll("#flow [data-edge]").forEach((edge) => {
+      edge.classList.toggle("on", on.includes(edge.dataset.edge));
+      edge.classList.toggle("fail", fail.includes(edge.dataset.edge));
+    });
+    document.querySelectorAll("#flow [data-node]").forEach((node) => {
+      const name = node.dataset.node;
+      const isError = (name === "invalid" || name === "r-error") && active.has(name);
+      node.classList.toggle("active", active.has(name) && !isError);
+      node.classList.toggle("error", isError);
+      node.classList.toggle("dim", !active.has(name));
+    });
+    document.querySelectorAll("#flow [data-label]").forEach((text) => {
+      const value = scenario.values[text.parentElement.dataset.node];
+      text.textContent = value ? `${text.dataset.label} → ${value}` : text.dataset.label;
+    });
+    document.querySelector("[data-left-result]").textContent = scenario.leftResult;
+    document.querySelector("[data-left-note]").textContent = scenario.leftNote;
+    document.querySelector("[data-right-result]").textContent = scenario.rightResult;
+    document.querySelector("[data-right-note]").textContent = scenario.rightNote;
+    document.querySelectorAll("[data-panel]").forEach((panel) => { panel.hidden = panel.dataset.panel !== id; });
+    document.querySelectorAll("[data-phase-btn]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.phaseBtn === id));
+    });
+  }
+
+  document.querySelectorAll("[data-phase-btn]").forEach((button) => {
+    button.addEventListener("click", () => showScenario(button.dataset.phaseBtn));
+  });
+  showScenario("p1");
+</script>
+</body>
+</html>
