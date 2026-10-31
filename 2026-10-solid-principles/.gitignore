@@ -1,0 +1,13 @@
+# build output
+rust/target/
+dotnet/**/bin/
+dotnet/**/obj/
+dotnet/**/TestResults/
+
+# python
+python/.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.mypy_cache/

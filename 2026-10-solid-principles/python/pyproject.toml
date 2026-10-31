@@ -1,0 +1,12 @@
+[project]
+name = "solid-principles-demo"
+version = "0.1.0"
+description = "SOLID 五個原則：同一個電商結帳情境的違反版與遵守版對照"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = ["mypy>=1.13", "pytest>=8", "pytest-cov>=6"]
+
+[tool.uv]
+package = false

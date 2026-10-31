@@ -10,6 +10,7 @@
 | [2026-10-checkout-queue](./2026-10-checkout-queue/) | 結帳排隊機制 | 進行中 | — |
 | [2026-10-dual-node-failover](./2026-10-dual-node-failover/) | 雙機備援機制（.NET 版完成） | 進行中 | 有條件可行：要有第三方仲裁（witness），而且要同步複寫才能不丟資料 |
 | [2026-10-cap-theorem](./2026-10-cap-theorem/) | CAP 定理範例（.NET / Python / Rust） | 進行中 | — |
+| [2026-10-solid-principles](./2026-10-solid-principles/) | SOLID 原則範例（.NET / Python / Rust） | 已完成 | 有條件可行：五個原則防的問題都跑得出來，但每個都要多付型別；只在那個方向真的會變時才划算 |
 
 ## 命名與結構慣例
 

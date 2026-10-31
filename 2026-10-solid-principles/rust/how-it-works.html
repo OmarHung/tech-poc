@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rust 版運作說明｜SOLID 原則範例</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --fg: #1d232b; --muted: #5d6773; --line: #d8dde3; --card: #ffffff; --code-bg: #f0f2f5;
+    --flow: #2563eb; --flow-ink: #ffffff; --fail: #d64545; --idle: #b9c0c8;
+    --tool: #6d5bd0; --major: #0f8b8d; --minor: #b86e0b; --warn-bg: #fff4dc; --warn-fg: #8a5300;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a; --fg: #e4e7eb; --muted: #9aa4b0; --line: #2d333b; --card: #1a1f26; --code-bg: #20262e;
+      --flow: #6ea0ff; --flow-ink: #0b1220; --fail: #ff7272; --idle: #4a525c;
+      --tool: #a596ff; --major: #4cc7c9; --minor: #f0a948; --warn-bg: #3a2c12; --warn-fg: #f5c46b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); line-height: 1.7;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 1.9rem; line-height: 1.3; margin: 0 0 8px; }
+  h2 { font-size: 1.35rem; margin: 56px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 20px 0 8px; }
+  p { margin: 8px 0; }
+  a { color: var(--flow); }
+  .lead { color: var(--muted); font-size: 1.05rem; margin: 0; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 0; }
+  nav.toc a { text-decoration: none; font-size: .9rem; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--fg); background: var(--card); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .86em; }
+  :not(pre) > code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; line-height: 1.55; margin: 10px 0; }
+  pre .c { color: var(--muted); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 16px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; border-top: 4px solid var(--c, var(--line)); }
+  .card h3 { margin: 0 0 4px; }
+  .card .port { color: var(--muted); font-size: .85rem; }
+  .card p { font-size: .93rem; }
+  .tool { --c: var(--tool); } .major { --c: var(--major); } .minor { --c: var(--minor); }
+  .tree { background: var(--card); border: 1px solid var(--line); }
+  .tree .hl { background: var(--warn-bg); color: var(--warn-fg); border-radius: 3px; }
+  .note { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; padding: 10px 14px; font-size: .93rem; margin: 12px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: .92rem; background: var(--card); }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+  th { background: var(--code-bg); font-weight: 600; }
+  table.principles td:first-child { white-space: nowrap; }
+
+  /* interactive flow */
+  .phase-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .phase-buttons button {
+    font: inherit; font-size: .92rem; cursor: pointer; padding: 6px 14px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--card); color: var(--fg);
+  }
+  .phase-buttons button:hover { border-color: var(--flow); }
+  .phase-buttons button:focus-visible { outline: 3px solid var(--flow); outline-offset: 2px; }
+  .phase-buttons button[aria-pressed="true"] { background: var(--flow); border-color: var(--flow); color: var(--flow-ink); font-weight: 600; }
+  .flow-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  #flow { width: 100%; height: auto; display: block; }
+  #flow text { fill: var(--fg); font-size: 13px; text-anchor: middle; }
+  #flow text.small { font-size: 11.5px; fill: var(--muted); }
+  #flow text.title { font-weight: 700; font-size: 14px; }
+  #flow text.half { font-weight: 700; font-size: 15px; }
+  #flow text.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+  #flow text.start { text-anchor: start; }
+  #flow text.ok { fill: var(--major); font-weight: 700; }
+  #flow text.bad { fill: var(--fail); font-weight: 700; }
+  #flow .box rect { fill: var(--card); stroke: var(--c, var(--idle)); stroke-width: 2; rx: 8; }
+  #flow .box.good { --c: var(--major); } #flow .box.bad { --c: var(--fail); }
+  #flow .box.actor { --c: var(--tool); } #flow .box.new { --c: var(--flow); }
+  #flow .box.broken rect { fill: var(--warn-bg); stroke: var(--fail); stroke-dasharray: 6 4; }
+  #flow .box.inner rect { stroke-width: 1.5; }
+  #flow line.divider { stroke: var(--line); stroke-width: 2; }
+  #flow path.edge { fill: none; stroke: var(--idle); stroke-width: 2; marker-end: url(#arrow-idle); }
+  #flow path.edge.on { stroke: var(--flow); stroke-width: 2.6; stroke-dasharray: 7 5; animation: dash 1s linear infinite; marker-end: url(#arrow-on); }
+  #flow path.edge.fail { stroke: var(--fail); stroke-width: 2.6; stroke-dasharray: 3 5; marker-end: url(#arrow-fail); }
+  #flow [data-principle][hidden] { display: none; }
+  @keyframes dash { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { #flow path.edge.on { animation: none; } }
+  .panel { margin-top: 12px; }
+  .panel dl { display: grid; grid-template-columns: 7.5em 1fr; gap: 6px 14px; margin: 8px 0; }
+  .panel dt { color: var(--muted); }
+  .panel dd { margin: 0; }
+
+  /* step timeline */
+  ol.steps { list-style: none; padding: 0; margin: 16px 0; counter-reset: step; }
+  ol.steps > li { position: relative; padding: 0 0 18px 46px; counter-increment: step; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--c, var(--flow)); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: .9rem;
+  }
+  ol.steps > li::after { content: ""; position: absolute; left: 14px; top: 32px; bottom: 2px; width: 2px; background: var(--line); }
+  ol.steps > li:last-child::after { display: none; }
+  ol.steps .where { font-size: .85rem; color: var(--muted); }
+  ol.steps .who { font-weight: 600; }
+  details { margin: 6px 0; }
+  details summary { cursor: pointer; color: var(--flow); font-size: .9rem; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  footer { margin-top: 64px; color: var(--muted); font-size: .88rem; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>SOLID 原則範例｜Rust 版運作說明</h1>
+  <p class="lead">這頁說明 <code>rust/</code> 裡的程式怎麼運作：SOLID 五個原則各用一個電商結帳的小情境，同一個模組裡放「違反版」和「遵守版」，示範程式把兩者的差別印出來。範例用 Rust 1.98、edition 2024，沒有外部 crate（只用標準函式庫的 trait、<code>Result</code>、<code>RefCell</code>），測試用 <code>cargo test</code>（整合測試 ＋ doctest）。</p>
+  <nav class="toc" aria-label="目錄">
+    <a href="#overview">1. 全貌</a>
+    <a href="#flow-section">2. 互動流程圖</a>
+    <a href="#journey">3. 一條新折扣規則的旅程</a>
+    <a href="#startup">4. 啟動時發生什麼</a>
+    <a href="#design">5. 關鍵設計</a>
+    <a href="#run">6. 怎麼跑</a>
+  </nav>
+</header>
+
+<section id="overview">
+  <h2>1. 全貌：五個原則各一個模組，一支示範程式，五組測試</h2>
+  <p>這份實作<strong>不開任何 port，也沒有外部服務</strong>。每個模組對應一個原則，裡面先放違反版（名稱多半以 <code>Legacy</code> 開頭），再放遵守版。示範程式依序跑五個情境，把兩個版本在同一個需求下的結果並排印出來。</p>
+  <div class="cards">
+    <div class="card major">
+      <h3>src/srp.rs ～ src/dip.rs</h3>
+      <div class="port">五個原則 ・ 由 <code>src/lib.rs</code> 組成 <code>solid_principles</code> crate</div>
+      <p>每個檔案開頭的 <code>//!</code> 寫情境，接著是 <code>// --- 違反 ---</code> 和 <code>// --- 遵守 ---</code> 兩段。<code>lsp.rs</code> 沿用 <code>ocp.rs</code> 的 <code>DiscountRule</code> trait。</p>
+    </div>
+    <div class="card tool">
+      <h3>src/main.rs</h3>
+      <div class="port">示範程式 ・ <code>./run.sh demo</code></div>
+      <p>依序呼叫 <code>show_srp()</code> 到 <code>show_dip()</code>。「滿千折百」的新規則 <code>SpendThresholdOff</code> 就定義在這裡，用來證明不用改 <code>ocp.rs</code>。三種語言的輸出逐字相同。</p>
+    </div>
+    <div class="card minor">
+      <h3>tests/srp.rs ～ tests/dip.rs</h3>
+      <div class="port">22 個測試 ＋ 4 個 doctest ・ <code>./run.sh test</code></div>
+      <p>違反版的錯誤真的會發生，遵守版不會。「貨到付款編譯不過」沒辦法寫成一般測試，所以寫成 <code>src/isp.rs</code> 裡的 <code>compile_fail</code> doctest。</p>
+    </div>
+  </div>
+
+  <h3>每個原則用了哪些型別</h3>
+  <table class="principles">
+    <thead><tr><th>原則</th><th>情境</th><th>違反版</th><th>遵守版</th></tr></thead>
+    <tbody>
+      <tr><td>S <code>srp.rs</code></td><td>財務要求發票含 5% 稅，物流的免運規則（未稅滿 1000）沒變</td><td><code>LegacyOrder</code>：發票和免運共用私有的 <code>amount()</code></td><td><code>InvoiceCalculator</code>（財務）、<code>ShippingPolicy</code>（物流），共用的只有不帶規則的 <code>subtotal()</code></td></tr>
+      <tr><td>O <code>ocp.rs</code></td><td>行銷部新增「滿 1000 折 100」</td><td><code>legacy_total_after_discount(subtotal, kind)</code> 的 <code>match</code>，不認得的種類回 <code>Err(UnsupportedDiscount)</code></td><td><code>DiscountRule</code> trait、<code>NoDiscount</code>、<code>PercentOff</code>、<code>total_after_discount()</code></td></tr>
+      <tr><td>L <code>lsp.rs</code></td><td>150 元的訂單套「折 200 元」</td><td><code>UncappedAmountOff</code>：永遠折滿額</td><td><code>FixedAmountOff</code>：最多折到 0 元；<code>contract_violations()</code> 檢查契約</td></tr>
+      <tr><td>I <code>isp.rs</code></td><td>貨到付款不能線上退款，也沒有付款資訊可以記住</td><td>肥 trait <code>LegacyPaymentMethod</code>、<code>LegacyCreditCard</code>、<code>LegacyCashOnDelivery</code>、錯誤型別 <code>NotSupported</code></td><td><code>Chargeable</code>、<code>Refundable</code>、<code>Rememberable</code>、<code>CreditCard</code>、<code>CashOnDelivery</code>、<code>refund_order()</code></td></tr>
+      <tr><td>D <code>dip.rs</code></td><td>結帳後寄通知，環境裡沒有 SMTP 伺服器</td><td><code>LegacyCheckoutService::new()</code> 自己建立 <code>SmtpMailer</code></td><td><code>Notifier</code> trait、<code>CheckoutService</code>（注入 <code>&amp;dyn Notifier</code>）、<code>RecordingNotifier</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>資料夾結構</h3>
+<pre class="tree">rust/
+├── Cargo.toml          套件名 solid-principles，edition 2024，沒有 [dependencies]
+├── Cargo.lock
+├── run.sh              ./run.sh demo | test
+├── src/
+│   ├── lib.rs          只有 pub mod：五個模組組成 solid_principles crate
+│   ├── srp.rs          S：LegacyOrder ↔ InvoiceCalculator、ShippingPolicy
+│   ├── ocp.rs          O：legacy_total_after_discount ↔ DiscountRule、PercentOff
+│   ├── lsp.rs          L：UncappedAmountOff ↔ FixedAmountOff、contract_violations
+│   ├── isp.rs          I：LegacyPaymentMethod ↔ Chargeable、Refundable、Rememberable；4 個 doctest
+│   ├── dip.rs          D：LegacyCheckoutService ↔ Notifier、CheckoutService
+│   └── main.rs         依序跑五個情境並印出結果；SpendThresholdOff 定義在這裡
+├── tests/
+│   ├── srp.rs          5 個測試
+│   ├── ocp.rs          4 個測試（參數化寫成迴圈）
+│   ├── lsp.rs          4 個測試（參數化寫成迴圈）
+│   ├── isp.rs          6 個測試
+│   └── dip.rs          3 個測試
+<span class="hl">└── how-it-works.html   就是這一頁</span></pre>
+</section>
+
+<section id="flow-section">
+  <h2>2. 互動流程圖：一個需求進來，漣漪擴散到哪裡</h2>
+  <p>點按鈕切換原則。左半是違反版、右半是遵守版，兩邊處理的是同一個需求。藍色虛線是正常運作的路徑，紅色點線是被連帶影響或出錯的路徑，紅色虛框是有問題的地方，紫框是提出需求的角色。</p>
+  <div class="phase-buttons" role="group" aria-label="選擇原則">
+    <button type="button" data-phase-btn="s" aria-pressed="true">S：單一職責</button>
+    <button type="button" data-phase-btn="o" aria-pressed="false">O：開放封閉</button>
+    <button type="button" data-phase-btn="l" aria-pressed="false">L：里氏替換</button>
+    <button type="button" data-phase-btn="i" aria-pressed="false">I：介面隔離</button>
+    <button type="button" data-phase-btn="d" aria-pressed="false">D：依賴反轉</button>
+  </div>
+
+  <div class="flow-wrap">
+    <svg id="flow" viewBox="0 0 960 420" role="img" aria-labelledby="flow-title flow-desc">
+      <title id="flow-title">SOLID 違反版與遵守版的對照圖</title>
+      <desc id="flow-desc">每個原則一張圖，左半是違反版，右半是遵守版。圖中標出需求從哪個角色進來、改到哪段程式，以及哪些地方被連帶影響、在執行時回傳錯誤，或在編譯時就被擋下。</desc>
+      <defs>
+        <marker id="arrow-idle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--idle)"/></marker>
+        <marker id="arrow-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--flow)"/></marker>
+        <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--fail)"/></marker>
+      </defs>
+
+      <text class="half bad" x="240" y="26">違反版</text>
+      <text class="half ok" x="720" y="26">遵守版</text>
+      <line class="divider" x1="480" y1="10" x2="480" y2="410"/>
+
+      <!-- S -->
+      <g data-principle="s">
+        <g class="box actor"><rect x="30" y="44" width="160" height="40"/><text x="110" y="69">財務：發票要含稅</text></g>
+        <g class="box actor"><rect x="290" y="44" width="160" height="40"/><text x="370" y="69">物流：規則沒變</text></g>
+        <g class="box bad"><rect x="40" y="120" width="400" height="200"/><text class="title" x="240" y="145">LegacyOrder</text></g>
+        <g class="box inner"><rect x="70" y="168" width="150" height="40"/><text class="mono" x="145" y="193">invoice_amount()</text></g>
+        <g class="box inner"><rect x="270" y="168" width="150" height="40"/><text class="mono" x="345" y="193">ships_free()</text></g>
+        <g class="box broken"><rect x="160" y="250" width="160" height="44"/><text class="mono" x="240" y="277">amount() ＋稅</text></g>
+        <path class="edge on" d="M110 84 C 55 150, 60 272, 158 272"/>
+        <text class="small start" x="60" y="236">改這裡</text>
+        <path class="edge on" d="M200 250 V210"/>
+        <path class="edge fail" d="M290 250 C 290 232, 345 236, 345 210"/>
+        <path class="edge" d="M370 84 V166"/>
+        <text class="ok" x="145" y="350">發票 1008 元 ✓</text>
+        <text class="bad" x="345" y="350">免運：是 ✗</text>
+        <text class="small" x="240" y="380">稅加在共用的私有 amount()，物流沒改需求卻被連帶改到</text>
+        <text class="small" x="240" y="400">未稅才 960 元，卻因為含稅 1008 元變成免運</text>
+
+        <g class="box actor"><rect x="510" y="44" width="160" height="40"/><text x="590" y="69">財務：發票要含稅</text></g>
+        <g class="box actor"><rect x="770" y="44" width="160" height="40"/><text x="850" y="69">物流：規則沒變</text></g>
+        <g class="box good"><rect x="510" y="150" width="180" height="64"/><text class="title" x="600" y="177">InvoiceCalculator</text><text class="mono" x="600" y="200">amount() ＋稅</text></g>
+        <g class="box good"><rect x="760" y="150" width="180" height="64"/><text class="title" x="850" y="177">ShippingPolicy</text><text class="mono" x="850" y="200">ships_free()</text></g>
+        <g class="box"><rect x="640" y="262" width="170" height="44"/><text class="mono" x="725" y="289">subtotal() 未稅小計</text></g>
+        <path class="edge on" d="M590 84 V148"/>
+        <text class="small start" x="598" y="120">改這裡</text>
+        <path class="edge" d="M850 84 V148"/>
+        <path class="edge" d="M600 214 C 600 245, 660 240, 680 260"/>
+        <path class="edge" d="M850 214 C 850 245, 790 240, 770 260"/>
+        <text class="ok" x="600" y="350">發票 1008 元 ✓</text>
+        <text class="ok" x="850" y="350">免運：否 ✓</text>
+        <text class="small" x="720" y="380">稅只寫在 InvoiceCalculator，ShippingPolicy 沒被碰到</text>
+        <text class="small" x="720" y="400">共用的 subtotal() 不帶任何一方的規則</text>
+      </g>
+
+      <!-- O -->
+      <g data-principle="o" hidden>
+        <g class="box actor"><rect x="30" y="44" width="200" height="40"/><text x="130" y="69">行銷：新增滿千折百</text></g>
+        <g class="box bad"><rect x="40" y="110" width="400" height="216"/><text class="title mono" x="240" y="135">legacy_total_after_discount()</text></g>
+        <g class="box inner"><rect x="80" y="152" width="330" height="32"/><text class="mono" x="245" y="173">"none"  =&gt; 原價</text></g>
+        <g class="box inner"><rect x="80" y="192" width="330" height="32"/><text class="mono" x="245" y="213">"vip"   =&gt; 九折</text></g>
+        <g class="box inner"><rect x="80" y="232" width="330" height="32"/><text class="mono" x="245" y="253">"staff" =&gt; 八折</text></g>
+        <g class="box broken"><rect x="80" y="276" width="330" height="36"/><text class="mono" x="245" y="299">_ =&gt; Err(UnsupportedDiscount)</text></g>
+        <path class="edge fail" d="M130 84 C 50 130, 50 294, 78 294"/>
+        <text class="small start" x="240" y="69">修改已經能用的函式</text>
+        <text class="bad" x="240" y="360">現在：回 Err「不支援的折扣：threshold」</text>
+        <text class="small" x="240" y="388">要支援，只能在這個已經能用、也測過的 match 加一行</text>
+
+        <g class="box actor"><rect x="510" y="44" width="200" height="40"/><text x="610" y="69">行銷：新增滿千折百</text></g>
+        <g class="box good"><rect x="620" y="110" width="220" height="44"/><text class="mono" x="730" y="137">total_after_discount()</text></g>
+        <g class="box"><rect x="640" y="196" width="180" height="40"/><text x="730" y="221">DiscountRule（trait）</text></g>
+        <g class="box"><rect x="505" y="290" width="130" height="40"/><text class="mono" x="570" y="315">NoDiscount</text></g>
+        <g class="box"><rect x="655" y="290" width="130" height="40"/><text class="mono" x="720" y="315">PercentOff</text></g>
+        <g class="box new"><rect x="805" y="290" width="145" height="40"/><text class="mono" x="877" y="315">SpendThresholdOff</text></g>
+        <path class="edge" d="M730 154 V194"/>
+        <path class="edge" d="M570 290 L690 238"/>
+        <path class="edge" d="M720 290 L728 238"/>
+        <path class="edge on" d="M877 290 L775 238"/>
+        <path class="edge on" d="M710 64 H900 V288"/>
+        <text class="small start" x="908" y="180">新增</text>
+        <text class="ok" x="720" y="360">1200 元 → 1100 元 ✓</text>
+        <text class="small" x="720" y="388">新型別寫在 main.rs（另一個 crate），ocp.rs 一行都沒改</text>
+      </g>
+
+      <!-- L -->
+      <g data-principle="l" hidden>
+        <g class="box"><rect x="100" y="56" width="280" height="44"/><text class="mono" x="240" y="83">total_after_discount(150, rule)</text></g>
+        <g class="box broken"><rect x="100" y="150" width="280" height="64"/><text class="title" x="240" y="177">UncappedAmountOff(200)</text><text class="mono" x="240" y="200">discount(150) → 200</text></g>
+        <g class="box bad"><rect x="100" y="264" width="280" height="48"/><text class="bad" x="240" y="293">150 − 200 = −50 元 ✗</text></g>
+        <path class="edge on" d="M240 100 V148"/>
+        <path class="edge fail" d="M240 214 V262"/>
+        <text class="small" x="240" y="356">打破契約 0 ≤ 折扣 ≤ 小計，呼叫端算出負數</text>
+        <text class="small mono" x="240" y="382">contract_violations(rule, &amp;SAMPLE_SUBTOTALS) → [0, 150]</text>
+
+        <g class="box"><rect x="580" y="56" width="280" height="44"/><text class="mono" x="720" y="83">total_after_discount(150, rule)</text></g>
+        <g class="box good"><rect x="580" y="150" width="280" height="64"/><text class="title" x="720" y="177">FixedAmountOff(200)</text><text class="mono" x="720" y="200">discount(150) → 200.min(150)</text></g>
+        <g class="box good"><rect x="580" y="264" width="280" height="48"/><text class="ok" x="720" y="293">150 − 150 = 0 元 ✓</text></g>
+        <path class="edge on" d="M720 100 V148"/>
+        <path class="edge on" d="M720 214 V262"/>
+        <text class="small" x="720" y="356">守住契約，呼叫端不用知道拿到的是哪一種規則</text>
+        <text class="small mono" x="720" y="382">contract_violations(rule, &amp;SAMPLE_SUBTOTALS) → []</text>
+      </g>
+
+      <!-- I -->
+      <g data-principle="i" hidden>
+        <g class="box bad"><rect x="90" y="44" width="300" height="76"/><text class="title" x="240" y="70">LegacyPaymentMethod（肥 trait）</text><text class="mono" x="240" y="98">charge()  refund()  remember()</text></g>
+        <g class="box"><rect x="20" y="190" width="200" height="60"/><text class="title" x="120" y="216">LegacyCreditCard</text><text class="small" x="120" y="238">三個都回 Ok</text></g>
+        <g class="box broken"><rect x="250" y="190" width="215" height="60"/><text class="title" x="357" y="216">LegacyCashOnDelivery</text><text class="small" x="357" y="238">refund ✗　remember ✗</text></g>
+        <path class="edge" d="M120 190 L190 122"/>
+        <path class="edge" d="M357 190 L290 122"/>
+        <g class="box"><rect x="257" y="300" width="200" height="40"/><text x="357" y="325">退款流程</text></g>
+        <path class="edge fail" d="M357 300 V252"/>
+        <text class="bad" x="240" y="374">執行到才回 Err(NotSupported)</text>
+        <text class="small" x="240" y="398">拿到 &amp;dyn LegacyPaymentMethod，看不出哪一種會失敗</text>
+
+        <g class="box"><rect x="500" y="44" width="140" height="40"/><text class="mono" x="570" y="69">Rememberable</text></g>
+        <g class="box"><rect x="660" y="44" width="140" height="40"/><text class="mono" x="730" y="69">Refundable</text></g>
+        <g class="box"><rect x="820" y="44" width="130" height="40"/><text class="mono" x="885" y="69">Chargeable</text></g>
+        <g class="box good"><rect x="510" y="180" width="180" height="50"/><text class="title" x="600" y="210">CreditCard</text></g>
+        <g class="box good"><rect x="770" y="180" width="170" height="50"/><text class="title" x="855" y="210">CashOnDelivery</text></g>
+        <path class="edge" d="M560 180 L570 86"/>
+        <path class="edge" d="M620 180 L720 86"/>
+        <path class="edge" d="M680 180 L850 86"/>
+        <path class="edge on" d="M885 180 V86"/>
+        <g class="box"><rect x="525" y="292" width="250" height="40"/><text class="mono" x="650" y="317">refund_order(&amp;impl Refundable)</text></g>
+        <path class="edge" d="M700 292 L728 86"/>
+        <path class="edge fail" d="M855 230 C 855 290, 820 312, 777 312"/>
+        <text class="bad" x="858" y="290">✗</text>
+        <text class="ok" x="720" y="374">CashOnDelivery 沒有 impl Refundable</text>
+        <text class="small" x="720" y="398">退款流程收不了它：編譯就擋下（compile_fail doctest 驗證）</text>
+      </g>
+
+      <!-- D -->
+      <g data-principle="d" hidden>
+        <g class="box bad"><rect x="120" y="50" width="240" height="50"/><text class="title" x="240" y="80">LegacyCheckoutService</text></g>
+        <g class="box"><rect x="120" y="170" width="240" height="50"/><text class="title" x="240" y="200">SmtpMailer</text></g>
+        <g class="box broken"><rect x="120" y="290" width="240" height="50"/><text x="240" y="320">SMTP 伺服器（不存在）</text></g>
+        <path class="edge on" d="M240 100 V168"/>
+        <text class="small start" x="250" y="140">在 new() 裡自己建立</text>
+        <path class="edge fail" d="M240 220 V288"/>
+        <text class="bad" x="240" y="374">結帳 → Err：連不到 smtp.example.com:25</text>
+        <text class="small" x="240" y="398">欄位型別就是 SmtpMailer，測試換不掉，業務邏輯跟著不能測</text>
+
+        <g class="box actor"><rect x="510" y="40" width="420" height="40"/><text x="720" y="65">main.rs／測試：決定要注入哪一個</text></g>
+        <g class="box good"><rect x="530" y="130" width="190" height="50"/><text class="title" x="625" y="160">CheckoutService</text></g>
+        <g class="box"><rect x="770" y="130" width="160" height="50"/><text x="850" y="160">Notifier（trait）</text></g>
+        <g class="box new"><rect x="530" y="270" width="190" height="50"/><text class="title" x="625" y="300">RecordingNotifier</text></g>
+        <g class="box"><rect x="770" y="270" width="160" height="50"/><text class="title" x="850" y="300">SmtpMailer</text></g>
+        <path class="edge on" d="M720 155 H768"/>
+        <text class="small mono" x="744" y="145">&amp;dyn</text>
+        <path class="edge on" d="M690 270 L800 182"/>
+        <path class="edge" d="M850 270 V182"/>
+        <text class="small start" x="858" y="232">impl Notifier</text>
+        <path class="edge on" d="M540 80 C 495 130, 495 295, 528 295"/>
+        <text class="small start" x="512" y="225">注入</text>
+        <text class="ok" x="720" y="374">注入 &amp;RecordingNotifier：不連 SMTP 也能測結帳</text>
+        <text class="small" x="720" y="398">箭頭都指向 Notifier：高層和低層都依賴抽象</text>
+      </g>
+    </svg>
+
+    <div class="panel" data-panel="s">
+      <h3>S：單一職責原則——一個模組只為一種角色改變</h3>
+      <dl>
+        <dt>需求</dt><dd>財務要求發票金額改成含 5% 營業稅。物流沒有任何新需求，規則還是「未稅小計滿 1000 元免運」。</dd>
+        <dt>違反版</dt><dd><code>LegacyOrder</code> 的 <code>invoice_amount()</code> 和 <code>ships_free()</code> 共用私有方法 <code>amount()</code>。把稅加進 <code>amount()</code> 後，960 元的訂單算成 1008 元，免運判斷跟著變成「是」。編譯器不會有任何意見：型別都對，只是意思變了。</dd>
+        <dt>遵守版</dt><dd>財務的 <code>InvoiceCalculator::amount()</code> 和物流的 <code>ShippingPolicy::ships_free()</code> 分開。稅只寫在前者，後者還是拿未稅的 <code>subtotal()</code> 比較，免運維持「否」。兩個都是沒有欄位的 unit struct，示範程式直接寫 <code>InvoiceCalculator.amount(&amp;items)</code>。</dd>
+        <dt>重點</dt><dd>可以共用的是「兩邊都認同的事實」（未稅小計），不能共用的是「某一方的規則」（稅）。這不是在算型別有幾個方法，而是看有幾種人會要求它改。</dd>
+        <dt>對應測試</dt><dd><code>tests/srp.rs</code> 的 <code>legacy_order_tax_change_leaks_into_free_shipping</code>、<code>shipping_policy_is_unaffected_by_tax</code></dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="o" hidden>
+      <h3>O：開放封閉原則——加功能是寫新程式，不是改舊程式</h3>
+      <dl>
+        <dt>需求</dt><dd>原本有 VIP 九折、員工八折，行銷部新增「滿 1000 折 100」。</dd>
+        <dt>違反版</dt><dd><code>legacy_total_after_discount(subtotal, kind)</code> 用 <code>match</code> 比對字串。傳 <code>"threshold"</code> 進去會落到 <code>_</code> 分支，回傳 <code>Err(UnsupportedDiscount { kind: "threshold" })</code>，印出來是「不支援的折扣：threshold」。要支援就得在這個已經測過的函式裡多加一個分支，示範輸出的「只能回去改這串判斷」指的就是這個 <code>match</code>。</dd>
+        <dt>遵守版</dt><dd><code>total_after_discount(subtotal, rule: &amp;dyn DiscountRule)</code> 只認 trait。新的 <code>SpendThresholdOff</code> 寫在 <code>src/main.rs</code>，加一段 <code>impl DiscountRule for SpendThresholdOff</code> 就能用，1200 元算出 1100 元。<code>main.rs</code> 是另一個 crate（執行檔），根本改不到 <code>ocp.rs</code>，照樣能擴充。</dd>
+        <dt>代價</dt><dd>多了一個 trait 和數個小型別。折扣種類固定、很少變的話，<code>match</code> 反而比較好讀；種類若改成 enum，編譯器還會檢查每個 <code>match</code> 有沒有漏掉。</dd>
+        <dt>對應測試</dt><dd><code>tests/ocp.rs</code> 的 <code>legacy_rejects_a_new_kind_until_someone_edits_it</code>、<code>new_rule_works_without_editing_the_module</code>（新規則定義在測試檔裡）、<code>rules_match_legacy_for_existing_kinds</code>（舊的三種折扣兩版結果相同）</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="l" hidden>
+      <h3>L：里氏替換原則——子型別要守住父型別的契約</h3>
+      <dl>
+        <dt>需求</dt><dd>新增「折 200 元」。小計只有 150 元的訂單套用後，總額應該是多少？</dd>
+        <dt>契約</dt><dd><code>DiscountRule</code> 的 doc comment 寫明 <code>0 &lt;= discount(subtotal) &lt;= subtotal</code>。<code>total_after_discount()</code> 依賴這個契約，才能保證總額不會是負數。</dd>
+        <dt>違反版</dt><dd><code>UncappedAmountOff(200)</code> 不管小計多少都回 200，總額變成 −50 元。型別完全合法，編譯器和 clippy 都沒意見，呼叫端也沒寫錯，錯的是這個實作沒守住契約。</dd>
+        <dt>遵守版</dt><dd><code>FixedAmountOff(200)</code> 回 <code>self.0.min(subtotal)</code>，總額最低是 0 元。</dd>
+        <dt>怎麼把關</dt><dd>trait 只規定簽章，契約不在型別系統裡，所以用 <code>contract_violations(rule, &amp;SAMPLE_SUBTOTALS)</code> 拿一組樣本小計檢查，再在 <code>every_shipped_rule_honors_the_contract</code> 裡用迴圈把每個實作跑一次。新加的 <code>SpendThresholdOff</code> 也在示範程式裡過了一次契約檢查。</dd>
+        <dt>檢查的是實例</dt><dd>契約檢查只對「這組參數」有效。<code>SpendThresholdOff { threshold: 1000, amount: 100 }</code> 守得住，但 <code>SpendThresholdOff { threshold: 50, amount: 100 }</code> 遇到小計 60 會折 100，一樣違反契約。要一勞永逸，就得像 <code>FixedAmountOff</code> 一樣在 <code>discount()</code> 裡設上限，或把欄位改成私有、提供一個在 <code>amount &gt; threshold</code> 時回 <code>Err</code> 的 <code>new()</code>。</dd>
+        <dt>對應測試</dt><dd><code>tests/lsp.rs</code> 的 <code>uncapped_amount_off_makes_the_total_negative</code>、<code>contract_check_catches_the_uncapped_rule</code>、<code>every_shipped_rule_honors_the_contract</code></dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="i" hidden>
+      <h3>I：介面隔離原則——不要逼實作者依賴用不到的方法</h3>
+      <dl>
+        <dt>需求</dt><dd>新增貨到付款。它能收款，但不能線上退款，也沒有付款資訊可以記住給下次用。</dd>
+        <dt>違反版</dt><dd>肥 trait <code>LegacyPaymentMethod</code> 有 <code>charge()</code>、<code>refund()</code>、<code>remember()</code> 三個方法，後兩個回傳 <code>Result&lt;String, NotSupported&gt;</code>。<code>LegacyCashOnDelivery</code> 只能回 <code>Err(NotSupported("貨到付款不能線上退款"))</code>。示範程式把它存成 <code>&amp;dyn LegacyPaymentMethod</code>：型別上看起來每種付款都能退款，要執行才知道這一個不行。</dd>
+        <dt>遵守版</dt><dd>拆成 <code>Chargeable</code>、<code>Refundable</code>、<code>Rememberable</code> 三個 trait，方法都不用 <code>Result</code>，因為做不到的事根本不會出現在型別上。<code>CashOnDelivery</code> 只有 <code>impl Chargeable</code>。<code>refund_order(method: &amp;impl Refundable, amount)</code> 只收實作了 <code>Refundable</code> 的型別。</dd>
+        <dt>Rust 的做法</dt><dd>擋下發生在編譯期，不需要另外的工具：<code>refund_order(&amp;CashOnDelivery, 300)</code> 編譯不過（E0277），<code>CashOnDelivery.refund(300)</code>、<code>CashOnDelivery.remember()</code> 也編譯不過（E0599）。「編譯不過」沒辦法寫成一般的 <code>#[test]</code>，所以這三段寫成 <code>src/isp.rs</code> 裡的 <code>compile_fail</code> doctest，<code>cargo test</code> 會確認它們真的編譯失敗。<code>compile_fail</code> 只看「有沒有失敗」不看原因，stable 版的 rustdoc 也不檢查標在後面的錯誤碼，所以旁邊另外放一段能編譯的 <code>refund_order(&amp;CreditCard, 300)</code> doctest 當對照，證明 import 路徑沒寫錯、失敗真的是 trait 不符造成的。反過來，Rust 沒辦法在執行時問「它有沒有實作 <code>Refundable</code>」，所以示範輸出「能退款嗎 → 否」是寫死的字，由這些 doctest 保證。Python 版要靠 mypy 在執行前擋下。</dd>
+        <dt>附帶觀察</dt><dd>違反 ISP 常常順便違反 LSP：<code>LegacyCashOnDelivery</code> 回 <code>Err</code>，等於沒守住「付款方式可以退款」的契約。</dd>
+        <dt>對應測試</dt><dd><code>tests/isp.rs</code> 的 <code>legacy_cash_on_delivery_is_forced_to_stub_two_methods</code>、<code>cash_on_delivery_only_implements_charging</code>（轉成 <code>&amp;dyn Chargeable</code> 編得過，就代表有實作）；<code>src/isp.rs</code> 的 3 個 <code>compile_fail</code> doctest</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="d" hidden>
+      <h3>D：依賴反轉原則——高層和低層都依賴抽象</h3>
+      <dl>
+        <dt>需求</dt><dd>結帳後寄通知給客人。這個環境沒有 SMTP 伺服器（<code>SmtpMailer</code> 的 <code>send()</code> 一定回 <code>Err(ConnectionError)</code>，模擬測試環境的真實狀況）。</dd>
+        <dt>違反版</dt><dd><code>LegacyCheckoutService::new()</code> 自己寫 <code>Self { mailer: SmtpMailer }</code>，欄位型別就是具體的 <code>SmtpMailer</code>，外面換不掉。結帳一定失敗，連「金額算得對不對」都沒辦法測。</dd>
+        <dt>遵守版</dt><dd><code>CheckoutService&lt;'a&gt;</code> 存一個 <code>&amp;'a dyn Notifier</code>，由 <code>CheckoutService::new()</code> 傳進來。測試和示範注入 <code>&amp;RecordingNotifier</code>，不連 SMTP 也能跑完結帳並檢查通知內容；正式環境注入 <code>&amp;SmtpMailer</code>，<code>CheckoutService</code> 一行都不用改。</dd>
+        <dt>Rust 的寫法</dt><dd>Python 的 Protocol 看形狀就算符合；Rust 要明寫 <code>impl Notifier for SmtpMailer</code>，這一行就是「低層也依賴抽象」的具體樣子。<code>Notifier::send()</code> 只拿 <code>&amp;self</code>（寄信不該改動寄信的人），所以 <code>RecordingNotifier</code> 把記錄放在 <code>RefCell&lt;Vec&lt;(String, String)&gt;&gt;</code> 裡，<code>send()</code> 用 <code>borrow_mut()</code> 推進去，結帳後用 <code>sent()</code> 拿一份複本。選 <code>&amp;dyn</code> 而不是泛型，是為了讓 <code>CheckoutService</code> 的型別裡不出現具體的通知型別。</dd>
+        <dt>跑不到的路徑</dt><dd>這份沒有量覆蓋率，但結論和 Python 版一樣：<code>LegacyCheckoutService::checkout()</code> 的 <code>Ok(receipt)</code> 永遠跑不到，因為前一行 <code>self.mailer.send(email, &amp;receipt)?</code> 一定帶著 <code>Err</code> 提早回傳。編譯器不會警告，因為型別上它是走得到的。換不掉 <code>SmtpMailer</code> 就測不了成功的情況，這正是違反 DIP 的代價。</dd>
+        <dt>和其他 PoC 的關係</dt><dd><a href="../../2026-10-modular-monolith-to-microservices/README.md">模組化單體轉微服務</a>能做到「呼叫端不改、把目錄模組換成 HTTP 客戶端」，靠的就是同一招：訂單模組只依賴目錄的介面。</dd>
+        <dt>對應測試</dt><dd><code>tests/dip.rs</code> 的 <code>legacy_checkout_cannot_run_without_an_smtp_server</code>、<code>checkout_with_a_fake_notifier_needs_no_smtp_server</code>、<code>checkout_uses_whatever_notifier_it_is_given</code></dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section id="journey">
+  <h2>3. 一條新折扣規則的旅程</h2>
+  <p>SOLID 不是「請求進、回應出」的程式，這一節改成追一個<strong>改動</strong>：行銷部要「滿 1000 折 100」，從寫出新規則、算出總額、檢查契約到測試把關，依序經過這些程式碼。這條路線同時用到 O 和 L。</p>
+  <ol class="steps">
+    <li style="--c: var(--tool)">
+      <div class="who">在 crate 外面寫新規則</div>
+      <div class="where"><code>src/main.rs</code> 的 <code>SpendThresholdOff</code></div>
+      <p>沒有繼承，只要 <code>impl DiscountRule for SpendThresholdOff</code>，就能交給 <code>total_after_discount()</code>。Rust 的規則是「trait 或型別至少有一個是自己的」才能寫 impl，這裡型別是自己的，所以在 lib 外面也能擴充。</p>
+<pre>struct SpendThresholdOff {
+    threshold: i64,
+    amount: i64,
+}
+
+impl DiscountRule for SpendThresholdOff {
+    fn discount(&amp;self, subtotal: i64) -&gt; i64 {
+        if subtotal &gt;= self.threshold {
+            self.amount
+        } else {
+            0
+        }
+    }
+}</pre>
+    </li>
+    <li style="--c: var(--major)">
+      <div class="who">算總額的函式不用改</div>
+      <div class="where"><code>src/ocp.rs</code> 的 <code>DiscountRule</code>、<code>total_after_discount()</code></div>
+      <p>示範程式把 <code>&amp;SpendThresholdOff { threshold: 1000, amount: 100 }</code> 傳進去，自動轉成 <code>&amp;dyn DiscountRule</code>。<code>rule.discount(1200)</code> 在執行時查表找到對的實作，拿到 100，回傳 1100。這個函式從頭到尾不知道「滿千折百」存在。</p>
+<pre><span class="c">/// 契約：0 &lt;= discount(subtotal) &lt;= subtotal。lsp 模組會檢查這件事。</span>
+pub trait DiscountRule {
+    fn discount(&amp;self, subtotal: i64) -&gt; i64;
+}
+
+pub fn total_after_discount(subtotal: i64, rule: &amp;dyn DiscountRule) -&gt; i64 {
+    subtotal - rule.discount(subtotal)
+}</pre>
+    </li>
+    <li style="--c: var(--major)">
+      <div class="who">檢查新規則有沒有守住契約</div>
+      <div class="where"><code>src/lsp.rs</code> 的 <code>contract_violations()</code></div>
+      <p>拿樣本小計 <code>SAMPLE_SUBTOTALS</code>（<code>[0, 150, 999, 1000, 5000]</code>）逐一呼叫 <code>discount()</code>，回傳不符合 <code>0 &lt;= 折扣 &lt;= 小計</code> 的那些；<code>(0..=subtotal).contains(..)</code> 就是這個不等式。<code>SpendThresholdOff</code> 小計未滿 1000 時折 0，滿了折 100，全部守住，回傳空的 <code>Vec</code>。Rust 沒有預設參數，所以樣本要明確傳進去。</p>
+<pre>pub fn contract_violations(rule: &amp;dyn DiscountRule, subtotals: &amp;[i64]) -&gt; Vec&lt;i64&gt; {
+    subtotals
+        .iter()
+        .copied()
+        .filter(|&amp;subtotal| !(0..=subtotal).contains(&amp;rule.discount(subtotal)))
+        .collect()
+}</pre>
+    </li>
+    <li style="--c: var(--minor)">
+      <div class="who">如果新規則沒守住契約</div>
+      <div class="where"><code>src/lsp.rs</code> 的 <code>UncappedAmountOff</code></div>
+      <p>型別一樣合法，<code>total_after_discount()</code> 照樣接受，但 150 元的訂單會算出 −50 元。<code>contract_violations(&amp;UncappedAmountOff(200), &amp;SAMPLE_SUBTOTALS)</code> 回傳 <code>vec![0, 150]</code>，指出是哪些小計出事。參數名稱前面的底線 <code>_subtotal</code> 是告訴編譯器「我故意不用它」，剛好也是「根本沒看小計」的線索。</p>
+<pre>#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UncappedAmountOff(pub i64);
+
+impl DiscountRule for UncappedAmountOff {
+    fn discount(&amp;self, _subtotal: i64) -&gt; i64 {
+        self.0
+    }
+}</pre>
+    </li>
+    <li style="--c: var(--minor)">
+      <div class="who">測試把每個規則都檢查一次</div>
+      <div class="where"><code>tests/lsp.rs</code>、<code>tests/ocp.rs</code></div>
+      <p>沒有用 rstest 這類外部 crate，參數化就是陣列加迴圈；<code>assert_eq!</code> 的第三個參數會在失敗時印出是第幾條規則。<code>tests/ocp.rs</code> 也在測試檔裡自己定義一份 <code>SpendThresholdOff</code>，證明 crate 外面就能擴充。</p>
+<pre>#[test]
+fn every_shipped_rule_honors_the_contract() {
+    let rules: [&amp;dyn DiscountRule; 4] = [
+        &amp;NoDiscount,
+        &amp;PercentOff(10),
+        &amp;PercentOff(20),
+        &amp;FixedAmountOff(200),
+    ];
+
+    for (index, rule) in rules.into_iter().enumerate() {
+        assert_eq!(
+            contract_violations(rule, &amp;SAMPLE_SUBTOTALS),
+            Vec::&lt;i64&gt;::new(),
+            "rules[{index}]"
+        );
+    }
+}</pre>
+    </li>
+    <li style="--c: var(--tool)">
+      <div class="who">印出結果</div>
+      <div class="where"><code>src/main.rs</code> 的 <code>show_ocp()</code>、<code>show_lsp()</code></div>
+      <p>印出 <code>[遵守] 套 SpendThresholdOff(1000, 100) → 1100 元</code>，以及「契約檢查 NoDiscount、PercentOff(10)、PercentOff(20)、SpendThresholdOff(1000, 100)、FixedAmountOff(200)：全部通過」。型別名稱和參數是手寫的標籤，不靠 <code>Debug</code>（具名欄位的 struct 用 <code>{:?}</code> 會印成 <code>SpendThresholdOff { threshold: 1000, amount: 100 }</code>），這樣三種語言才能印出一樣的字。</p>
+    </li>
+  </ol>
+
+  <h3>每種錯誤在哪裡、什麼時候被發現</h3>
+  <table>
+    <thead><tr><th>狀況</th><th>在哪裡</th><th>什麼時候發現</th><th>結果</th></tr></thead>
+    <tbody>
+      <tr><td>違反版遇到新的折扣種類</td><td><code>legacy_total_after_discount()</code> 的 <code>_</code> 分支</td><td>執行時</td><td><code>Err(UnsupportedDiscount { kind: "threshold" })</code>，<code>Display</code> 是「不支援的折扣：threshold」</td></tr>
+      <tr><td>折扣規則折得比小計還多</td><td><code>contract_violations()</code>、<code>every_shipped_rule_honors_the_contract</code></td><td>跑測試時</td><td>列出違反契約的小計；不檢查的話執行時算出負數總額</td></tr>
+      <tr><td>違反版對貨到付款退款</td><td><code>LegacyCashOnDelivery</code> 的 <code>refund()</code></td><td>執行時</td><td><code>Err(NotSupported("貨到付款不能線上退款"))</code></td></tr>
+      <tr><td>遵守版對貨到付款退款</td><td><code>refund_order(method: &amp;impl Refundable, ...)</code> 的 trait 限制</td><td>編譯期</td><td>E0277，程式根本編不出來。由 <code>src/isp.rs</code> 的 <code>compile_fail</code> doctest 保證；<code>compile_fail</code> 不檢查錯誤碼，所以旁邊另外放一段能編譯的 <code>refund_order(&amp;CreditCard, 300)</code> doctest 當對照</td></tr>
+      <tr><td>沒有 SMTP 伺服器</td><td><code>impl Notifier for SmtpMailer</code> 的 <code>send()</code></td><td>執行時</td><td><code>Err(ConnectionError)</code>，<code>Display</code> 是「連不到 smtp.example.com:25」；遵守版可以改注入 <code>RecordingNotifier</code> 避開</td></tr>
+      <tr><td>改了財務規則，物流被連帶影響</td><td><code>LegacyOrder</code> 的私有 <code>amount()</code></td><td>上線後才發現（沒有任何錯誤）</td><td>960 元的訂單被判成免運；只有寫了 <code>legacy_order_tax_change_leaks_into_free_shipping</code> 這種測試才抓得到</td></tr>
+    </tbody>
+  </table>
+  <p class="note">最難發現的是 SRP 那一列：沒有 <code>Err</code>、沒有編譯錯誤，只是結果悄悄變了。其他原則被違反時，多少還會拿到一個 <code>Err</code>，或是直接編譯不過。</p>
+</section>
+
+<section id="startup">
+  <h2>4. 啟動時發生什麼</h2>
+  <div class="cols">
+    <div class="card tool">
+      <h3>src/main.rs</h3>
+      <p><code>fn main()</code> 依序呼叫 <code>show_srp()</code>、<code>show_ocp()</code>、<code>show_lsp()</code>、<code>show_isp()</code>、<code>show_dip()</code>。每個函式自己建立需要的值，彼此不共用狀態。沒有設定檔，也不讀環境變數。<code>main()</code> 不回傳 <code>Result</code>：所有失敗都在 <code>outcome()</code> 裡變成一行字。</p>
+    </div>
+    <div class="card major">
+      <h3>五個原則模組</h3>
+      <p><code>src/lib.rs</code> 只有 <code>pub mod</code>，沒有全域狀態，也沒有初始化。唯一的「組裝」發生在 <code>show_dip()</code>：它決定 <code>CheckoutService::new()</code> 要拿 <code>&amp;recorder</code> 還是 <code>&amp;SmtpMailer</code>，這就是 DIP 說的組裝點（composition root）。</p>
+    </div>
+    <div class="card minor">
+      <h3>測試</h3>
+      <p><code>cargo test</code> 依序跑 lib 和 main 的單元測試（都是 0 個）、<code>tests/</code> 底下 5 個各自獨立編譯的整合測試檔（22 個），最後是 doctest（4 個：1 個正常執行、3 個 <code>compile_fail</code>）。Python 版的 43 個是 <code>parametrize</code> 展開後的數字；Rust 的參數化寫成迴圈，ocp 的 3 組和 15 組、lsp 的 4 組各只算 1 個測試。Python 用 mypy 檢查型別的 2 個測試，在這裡就是 ISP 的 doctest。</p>
+    </div>
+  </div>
+<pre>fn show_dip() {
+    ...
+    let recorder = RecordingNotifier::default();
+    let receipt = outcome(CheckoutService::new(&amp;recorder).checkout(CUSTOMER_EMAIL, 1080));
+    let sent = recorder.sent();
+    ...
+    let smtp = outcome(CheckoutService::new(&amp;SmtpMailer).checkout(CUSTOMER_EMAIL, 1080));</pre>
+  <p><code>outcome()</code> 把 <code>Result</code> 轉成字串：<code>Ok</code> 印值，<code>Err</code> 印「錯誤：…」。違反版的失敗也能印成一行，不用 panic，示範程式也不會中斷。</p>
+<pre><span class="c">/// 成功印結果，失敗印「錯誤：訊息」</span>
+fn outcome&lt;T: Display, E: Display&gt;(result: Result&lt;T, E&gt;) -&gt; String {
+    match result {
+        Ok(value) =&gt; value.to_string(),
+        Err(error) =&gt; format!("錯誤：{error}"),
+    }
+}</pre>
+</section>
+
+<section id="design">
+  <h2>5. 關鍵設計</h2>
+
+  <h3>違反版和遵守版放在同一個模組</h3>
+  <p>每個檔案上半是違反版、下半是遵守版，打開一個檔案就能對照。名稱撞到時，違反版加 <code>Legacy</code> 前綴（<code>LegacyOrder</code>、<code>LegacyCashOnDelivery</code>、<code>LegacyCheckoutService</code>）。LSP 的違反版不是舊寫法，而是「型別對但行為錯」的新規則，所以叫 <code>UncappedAmountOff</code>。</p>
+
+  <h3>Rust 用 trait 當介面</h3>
+  <p><code>DiscountRule</code>、<code>Chargeable</code>、<code>Notifier</code> 都是 trait，要明寫 <code>impl Trait for Type</code> 才算符合，不像 Python 的 Protocol 看形狀就算。好處是沒實作就編譯不過，ISP 的擋下發生在編譯期；限制是 trait 只規定簽章，<strong>契約（0 ≤ 折扣 ≤ 小計）一樣沒有東西強迫你守住</strong>，所以 LSP 還是要靠 <code>contract_violations()</code> 和測試。需要把不同規則放進同一個陣列時用 <code>&amp;dyn Trait</code>（執行時分派）；<code>refund_order()</code> 用 <code>&amp;impl Refundable</code>（泛型，編譯時決定），兩種都能擋下貨到付款。</p>
+
+  <h3>例外換成 Result 和錯誤型別</h3>
+  <p>Python 丟例外的地方，這裡都回傳 <code>Result</code>，不用 panic 模擬例外。三個錯誤型別 <code>UnsupportedDiscount</code>（<code>ocp.rs</code>）、<code>NotSupported</code>（<code>isp.rs</code>）、<code>ConnectionError</code>（<code>dip.rs</code>）都實作 <code>Display</code>（訊息和 Python 逐字相同）和 <code>std::error::Error</code>。ISP 的肥 trait 只有 <code>refund()</code>、<code>remember()</code> 回傳 <code>Result</code>，<code>charge()</code> 直接回 <code>String</code>；遵守版的三個 trait 都不用 <code>Result</code>。</p>
+
+  <h3>輸出只印型別名稱</h3>
+  <p>型別名稱在三種語言都是 PascalCase，方法名稱則不一樣（Rust 和 Python 是 <code>ships_free</code>，C# 是 <code>ShipsFree</code>）。示範輸出只出現型別名稱和中文描述，所以可以和 Python、.NET 版用 <code>diff</code> 逐字比對。trait 名稱也不印，因為 C# 慣例會加 <code>I</code> 前綴。</p>
+
+  <h3>代價：型別變多了</h3>
+  <table>
+    <thead><tr><th>原則</th><th>違反版</th><th>遵守版</th><th>什麼時候不值得</th></tr></thead>
+    <tbody>
+      <tr><td>S</td><td>1 個 struct</td><td>2 個 struct ＋ 1 個共用函式</td><td>只有一種角色會要求它改的時候</td></tr>
+      <tr><td>O</td><td>1 個函式 ＋ 1 個錯誤型別</td><td>1 個 trait ＋ 2 個 struct ＋ 1 個函式，之後每種折扣再 ＋1 個 struct</td><td>種類固定、幾年才改一次的時候</td></tr>
+      <tr><td>L</td><td>1 個 struct</td><td>1 個 struct ＋ 契約檢查</td><td>沒有不值得的時候：違反 LSP 就是 bug</td></tr>
+      <tr><td>I</td><td>1 個 trait ＋ 2 個 struct ＋ 1 個錯誤型別</td><td>3 個 trait ＋ 2 個 struct ＋ 1 個函式</td><td>所有實作都真的做得到每個方法的時候</td></tr>
+      <tr><td>D</td><td>1 個 struct</td><td>1 個 trait ＋ 1 個 struct ＋ 1 個測試替身，外加 <code>impl Notifier for SmtpMailer</code></td><td>依賴的東西本身就是純計算、不碰外部的時候</td></tr>
+    </tbody>
+  </table>
+  <p>O 和 I 的違反版在 Rust 多了一個錯誤型別：Python 可以直接丟內建的例外，Rust 的 <code>Err</code> 要有一個型別裝著。</p>
+
+  <h3>其他</h3>
+  <table>
+    <thead><tr><th>設計</th><th>做法</th><th>在哪裡</th></tr></thead>
+    <tbody>
+      <tr><td>金額都用 <code>i64</code></td><td>新台幣元，不會有浮點誤差。用有號整數是因為 LSP 的違反版會算出負數。整數除法：Rust 的 <code>/</code> 往 0 取整，Python 的 <code>//</code> 往下取整，只有負數會不同；所有樣本都不是負數，三種語言算出來一樣</td><td><code>srp.rs</code>、<code>ocp.rs</code></td></tr>
+      <tr><td>單一欄位用 tuple struct</td><td><code>PercentOff(10)</code>、<code>UncappedAmountOff(200)</code>、<code>FixedAmountOff(200)</code> 寫起來和輸出的標籤一樣；兩個欄位的 <code>SpendThresholdOff</code> 用具名欄位，免得搞混門檻和折扣</td><td><code>ocp.rs</code>、<code>lsp.rs</code>、<code>main.rs</code></td></tr>
+      <tr><td>沒有預設參數</td><td>Python 的 <code>contract_violations(rule)</code>，在 Rust 要寫成 <code>contract_violations(rule, &amp;SAMPLE_SUBTOTALS)</code></td><td><code>lsp.rs</code></td></tr>
+      <tr><td>唯一會變的東西</td><td>規則都是 <code>Copy</code> 的小 struct，方法只拿 <code>&amp;self</code>。<code>RecordingNotifier</code> 的 <code>RefCell</code> 是唯一的內部可變性，因為「記錄收到的通知」本來就是副作用；<code>sent()</code> 回傳複本，不把借用交出去</td><td><code>dip.rs</code></td></tr>
+      <tr><td><code>new()</code> 和 <code>Default</code> 都有</td><td><code>LegacyCheckoutService</code> 有 <code>new()</code> 就得有 <code>Default</code>（clippy 的 <code>new_without_default</code>）。<code>new()</code> 裡明寫 <code>Self { mailer: SmtpMailer }</code>，讓「自己建立依賴」看得見</td><td><code>dip.rs</code></td></tr>
+      <tr><td>違反版的錯誤也寫成測試</td><td>測試斷言「違反版真的會出錯」，避免範例變成只有口頭說明</td><td>每個 <code>tests/*.rs</code></td></tr>
+      <tr><td>沒有外部 crate</td><td><code>Cargo.toml</code> 沒有 <code>[dependencies]</code>；參數化測試用迴圈，不用 rstest</td><td><code>Cargo.toml</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="run">
+  <h2>6. 怎麼跑</h2>
+<pre><span class="c"># 在 rust/ 底下</span>
+./run.sh demo                      <span class="c"># cargo run --quiet：印出五個原則的對照</span>
+./run.sh test                      <span class="c"># cargo test：22 個測試 ＋ 4 個 doctest</span>
+
+<span class="c"># 只跑某一個原則的測試（tests/lsp.rs）</span>
+cargo test --test lsp
+
+<span class="c"># 只跑 doctest（ISP 的 compile_fail 和對照組）</span>
+cargo test --doc
+
+<span class="c"># 格式和 lint</span>
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+
+<span class="c"># 自己玩：在 tests/lsp.rs 加一條新的折扣規則，看它有沒有守住契約</span>
+struct HalfOff;
+
+impl DiscountRule for HalfOff {
+    fn discount(&amp;self, subtotal: i64) -&gt; i64 {
+        subtotal / 2
+    }
+}
+
+#[test]
+fn half_off_honors_the_contract() {
+    assert!(contract_violations(&amp;HalfOff, &amp;SAMPLE_SUBTOTALS).is_empty());
+}
+
+<span class="c"># 確認三種語言輸出相同（在 PoC 根目錄）</span>
+diff &lt;(python/run.sh demo) &lt;(dotnet/run.sh demo) &amp;&amp; diff &lt;(python/run.sh demo) &lt;(rust/run.sh demo)</pre>
+
+  <p>這份實作沒有 port，也不讀環境變數。想換情境就改這些地方：</p>
+  <table>
+    <thead><tr><th>想做的事</th><th>改哪裡</th><th>例子</th></tr></thead>
+    <tbody>
+      <tr><td>換 SRP 的訂單金額</td><td><code>src/main.rs</code> 的 <code>show_srp()</code> 裡的 <code>items</code></td><td><code>vec![LineItem::new("鍵盤", 1000, 1)]</code>：未稅剛好 1000，兩版都免運，差異消失</td></tr>
+      <tr><td>多檢查幾個小計</td><td><code>src/lsp.rs</code> 的 <code>SAMPLE_SUBTOTALS</code>，或呼叫時傳別的 slice</td><td><code>contract_violations(&amp;FixedAmountOff(200), &amp;(0..=2000).collect::&lt;Vec&lt;i64&gt;&gt;())</code></td></tr>
+      <tr><td>加一種付款方式</td><td>在 <code>isp.rs</code> 外面寫一個 struct，只 impl 做得到的 trait</td><td>只 <code>impl Chargeable</code> 和 <code>impl Refundable</code> 的「行動支付」，就能交給 <code>refund_order()</code></td></tr>
+      <tr><td>換通知方式</td><td>寫一個 struct 並 <code>impl Notifier</code>，把參考交給 <code>CheckoutService::new()</code></td><td>簡訊、LINE 通知；<code>CheckoutService</code> 不用改</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  實驗設計、成功標準和結論，請看 <a href="../README.md">PoC 的 README</a>。同樣的說明也有 <a href="../python/how-it-works.html">Python 版</a> 和 <a href="../dotnet/how-it-works.html">.NET 版</a>。
+</footer>
+
+</main>
+<script>
+  function showPrinciple(id) {
+    // SVG 元素沒有 hidden 屬性可以直接設，要改 attribute 才會套到 CSS
+    document.querySelectorAll("#flow [data-principle]").forEach((group) => { group.toggleAttribute("hidden", group.dataset.principle !== id); });
+    document.querySelectorAll("[data-panel]").forEach((panel) => { panel.hidden = panel.dataset.panel !== id; });
+    document.querySelectorAll("[data-phase-btn]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.phaseBtn === id));
+    });
+  }
+
+  document.querySelectorAll("[data-phase-btn]").forEach((button) => {
+    button.addEventListener("click", () => showPrinciple(button.dataset.phaseBtn));
+  });
+  showPrinciple("s");
+</script>
+</body>
+</html>
