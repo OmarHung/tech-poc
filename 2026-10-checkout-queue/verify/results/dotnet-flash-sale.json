@@ -1,0 +1,122 @@
+{
+  "lang": "dotnet",
+  "phase": "flash-sale",
+  "passed": 20,
+  "failures": [],
+  "users": 1000,
+  "initial_stock": 200,
+  "elapsed_s": 24.98,
+  "requests": 18912,
+  "requests_per_s": 757,
+  "served_by": {
+    "instance-0": 9957,
+    "instance-1": 8955
+  },
+  "audit": {
+    "initialStock": 200,
+    "stock": 0,
+    "pendingOrders": 0,
+    "pendingQuantity": 0,
+    "paidOrders": 126,
+    "paidQuantity": 200,
+    "expiredOrders": 23,
+    "expiredQuantity": 23,
+    "charges": 126,
+    "duplicateCharges": 0,
+    "usersWithMultipleLiveOrders": 0,
+    "tickets": 1000,
+    "waiting": 806,
+    "active": 0,
+    "oversold": 0,
+    "stockBalanced": true
+  },
+  "ticket_statuses": {
+    "expired": 30,
+    "abandoned": 15,
+    "sold_out": 806,
+    "ordered": 149
+  },
+  "profiles": {
+    "buyer": {
+      "paid": 108,
+      "admission_expired": 2,
+      "sold_out": 490
+    },
+    "double-tab": {
+      "paid": 18,
+      "sold_out": 82
+    },
+    "idle-after-admit": {
+      "admitted": 23,
+      "sold_out": 77
+    },
+    "leaves": {
+      "left": 100
+    },
+    "never-pays": {
+      "ordered": 23,
+      "sold_out": 77
+    }
+  },
+  "latency": {
+    "admin": {
+      "n": 1
+    },
+    "checkout": {
+      "n": 202,
+      "p50_ms": 1.19,
+      "p95_ms": 3.12,
+      "p99_ms": 8.81,
+      "max_ms": 10.65
+    },
+    "final-poll": {
+      "n": 1000,
+      "p50_ms": 0.21,
+      "p95_ms": 0.48,
+      "p99_ms": 0.69,
+      "max_ms": 1.33
+    },
+    "health": {
+      "n": 2,
+      "p50_ms": 3.33,
+      "p95_ms": 7.52,
+      "p99_ms": 7.89,
+      "max_ms": 4.88
+    },
+    "join": {
+      "n": 1100,
+      "p50_ms": 1981.42,
+      "p95_ms": 3005.44,
+      "p99_ms": 3058.68,
+      "max_ms": 3080.24
+    },
+    "pay": {
+      "n": 156,
+      "p50_ms": 1.04,
+      "p95_ms": 2.26,
+      "p99_ms": 6.63,
+      "max_ms": 7.24
+    },
+    "poll": {
+      "n": 16451,
+      "p50_ms": 1.32,
+      "p95_ms": 5.94,
+      "p99_ms": 38.5,
+      "max_ms": 1202.42
+    }
+  },
+  "status_delay": {
+    "n": 151,
+    "p50_ms": 541.0,
+    "p95_ms": 2845.8,
+    "p99_ms": 3614.52,
+    "max_ms": 3692.0
+  },
+  "estimate_error": {
+    "n": 135,
+    "median_error_s": -0.9,
+    "median_abs_error_s": 1.5
+  },
+  "cold_connect": false,
+  "join_wall_s": 3.07
+}

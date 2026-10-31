@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>結帳排隊操作台</title>
+<style nonce="__CSP_NONCE__">
+  :root {
+    --paper: #f3f0e8; --ink: #1b1d21; --muted: #676b74; --rule: #d8d2c4; --card: #fffdf8; --sunk: #ebe6da;
+    --wait: #2f63cf; --go: #0f8a6c; --hold: #b8740a; --sold: #5a43c2; --gone: #8d9199; --bad: #c63a3a;
+    --wait-bg: #e6edfb; --go-bg: #def3ec; --hold-bg: #fbefd9; --sold-bg: #ebe7fa; --bad-bg: #fae3e3;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --radius: 10px;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0f1216; --ink: #e8e5dd; --muted: #98a0ab; --rule: #2a2f37; --card: #171b21; --sunk: #12161b;
+      --wait: #7aa2ff; --go: #45cfa6; --hold: #f2b34c; --sold: #a593ff; --gone: #7d838c; --bad: #ff7b7b;
+      --wait-bg: #18233a; --go-bg: #12291f; --hold-bg: #2d2412; --sold-bg: #221d3a; --bad-bg: #331a1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink); line-height: 1.55;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 20px 22px 60px; }
+
+  /* top bar */
+  .top { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px; padding-bottom: 16px; border-bottom: 2px solid var(--ink); }
+  .brand { display: flex; align-items: baseline; gap: 10px; margin: 0; font-size: 1.45rem; letter-spacing: .02em; }
+  .brand .mark { font-family: var(--mono); font-weight: 800; color: var(--paper); background: var(--ink); padding: 0 8px; border-radius: 6px; }
+  .instance { --inst: hsl(var(--inst-h, 0) 60% 40%); font-family: var(--mono); font-weight: 700; padding: 4px 12px; border-radius: 999px; border: 2px solid var(--inst); color: var(--inst); }
+  @media (prefers-color-scheme: dark) { .instance { --inst: hsl(var(--inst-h, 0) 75% 72%); } }
+  .sale { color: var(--muted); font-size: .9rem; }
+  .rules { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; margin-left: auto; }
+  .rules li { font-size: .8rem; color: var(--muted); border: 1px solid var(--rule); border-radius: 6px; padding: 2px 8px; background: var(--card); }
+  .rules b { color: var(--ink); font-family: var(--mono); font-weight: 600; }
+
+  /* board: stock + integrity */
+  .board { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(260px, 1fr); gap: 18px; margin: 20px 0 14px; }
+  .panel { background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius); padding: 14px 16px; }
+  .panel h2 { margin: 0 0 10px; font-size: .8rem; letter-spacing: .12em; color: var(--muted); font-weight: 600; }
+  .counts { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-bottom: 12px; }
+  .count { display: flex; flex-direction: column; }
+  .count .n { font-family: var(--mono); font-size: 2.1rem; line-height: 1.05; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .count .l { font-size: .82rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .count .l::before { content: ""; width: 10px; height: 10px; border-radius: 2px; border: 1.5px solid var(--sw); background: var(--swf, transparent); }
+  .count.shelf { --sw: var(--ink); } .count.held { --sw: var(--hold); --swf: var(--hold); } .count.sold { --sw: var(--sold); --swf: var(--sold); }
+  .count.shelf .n { color: var(--ink); } .count.held .n { color: var(--hold); } .count.sold .n { color: var(--sold); }
+  .units { display: flex; flex-wrap: wrap; gap: 4px; }
+  .unit { width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid var(--ink); opacity: .55; }
+  .unit.held { background: var(--hold); border-color: var(--hold); opacity: 1; }
+  .unit.sold { background: var(--sold); border-color: var(--sold); opacity: 1; }
+  .unit-bar { display: flex; height: 18px; border-radius: 4px; overflow: hidden; border: 1.5px solid var(--ink); }
+  .unit-bar span { display: block; height: 100%; }
+  .unit-bar .sold { background: var(--sold); } .unit-bar .held { background: var(--hold); }
+  .checks { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; font-size: .92rem; }
+  .checks dt { color: var(--muted); }
+  .checks dd { margin: 0; font-family: var(--mono); font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+  .checks dd.ok { color: var(--go); } .checks dd.bad { color: var(--bad); }
+
+  /* controls */
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 6px 0 4px; }
+  .controls form { display: flex; gap: 8px; }
+  .controls input[type="text"] {
+    width: 13em; padding: 7px 10px; border-radius: 8px; border: 1.5px solid var(--rule); background: var(--card);
+  }
+  .controls input[type="text"]:focus-visible { outline: 3px solid var(--wait); outline-offset: 1px; border-color: var(--wait); }
+  .btn {
+    cursor: pointer; padding: 7px 14px; border-radius: 8px; border: 1.5px solid var(--ink); background: var(--card); font-weight: 600;
+    transition: transform .08s ease, background .15s ease;
+  }
+  .btn:hover { background: var(--sunk); }
+  .btn:active { transform: translateY(1px); }
+  .btn:focus-visible { outline: 3px solid var(--wait); outline-offset: 2px; }
+  .btn:disabled { cursor: not-allowed; opacity: .45; }
+  .btn.primary { background: var(--ink); color: var(--paper); }
+  .btn.primary:hover { background: var(--ink); opacity: .88; }
+  .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: .92rem; cursor: pointer; }
+  .toggle input { width: 16px; height: 16px; accent-color: var(--go); }
+  .hint { color: var(--muted); font-size: .85rem; margin: 6px 0 16px; }
+  .form-error { color: var(--bad); font-size: .85rem; min-height: 1.2em; }
+
+  /* lanes */
+  .lanes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: start; }
+  .lane { background: var(--sunk); border-radius: var(--radius); padding: 10px; min-height: 160px; border-top: 4px solid var(--lane); }
+  .lane[data-lane="waiting"] { --lane: var(--wait); } .lane[data-lane="admitted"] { --lane: var(--go); }
+  .lane[data-lane="ordered"] { --lane: var(--sold); } .lane[data-lane="ended"] { --lane: var(--gone); }
+  .lane h2 { display: flex; justify-content: space-between; align-items: baseline; margin: 2px 4px 10px; font-size: 1rem; }
+  .lane h2 small { font-weight: 500; color: var(--muted); font-size: .8rem; font-family: var(--mono); }
+  .lane .stack { display: flex; flex-direction: column; gap: 8px; }
+  .empty { color: var(--muted); font-size: .85rem; padding: 10px 6px; }
+
+  /* ticket stub */
+  .stub {
+    --tone: var(--wait); --tone-bg: var(--wait-bg);
+    position: relative; display: grid; grid-template-columns: 58px 1fr; background: var(--card);
+    border-radius: 8px; border: 1px solid var(--rule); box-shadow: 0 1px 0 var(--rule);
+  }
+  .stub[data-tone="go"] { --tone: var(--go); --tone-bg: var(--go-bg); }
+  .stub[data-tone="hold"] { --tone: var(--hold); --tone-bg: var(--hold-bg); }
+  .stub[data-tone="sold"] { --tone: var(--sold); --tone-bg: var(--sold-bg); }
+  .stub[data-tone="bad"] { --tone: var(--bad); --tone-bg: var(--bad-bg); }
+  .stub[data-tone="gone"] { --tone: var(--gone); --tone-bg: var(--sunk); }
+  .stub.offline { opacity: .6; }
+  .stub.offline .no::after { content: "離線"; display: block; font-size: .65rem; font-weight: 600; letter-spacing: .05em; }
+  .stub .no {
+    display: grid; place-content: center; text-align: center; font-family: var(--mono); font-weight: 800; font-size: 1.05rem;
+    color: var(--tone); background: var(--tone-bg); border-radius: 8px 0 0 8px; border-right: 2px dashed var(--rule);
+    font-variant-numeric: tabular-nums;
+  }
+  .stub::before, .stub::after {
+    content: ""; position: absolute; left: 51px; width: 12px; height: 12px; border-radius: 50%; background: var(--sunk);
+  }
+  .stub::before { top: -6px; } .stub::after { bottom: -6px; }
+  .stub .body { padding: 8px 10px 9px; min-width: 0; }
+  .stub .who { display: flex; justify-content: space-between; gap: 6px; font-weight: 700; font-size: .92rem; }
+  .stub .who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stub .tag { flex: none; font-size: .72rem; font-weight: 700; color: var(--tone); }
+  .stub .line { font-size: .84rem; color: var(--muted); margin-top: 1px; font-variant-numeric: tabular-nums; }
+  .meter { height: 5px; border-radius: 3px; background: var(--sunk); overflow: hidden; margin-top: 6px; }
+  .meter span { display: block; height: 100%; background: var(--tone); transform-origin: left; transform: scaleX(var(--left, 1)); transition: transform .25s linear; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .actions .btn { padding: 3px 9px; font-size: .8rem; border-width: 1.5px; }
+  .actions .btn.go { border-color: var(--tone); color: var(--tone); }
+  .actions select { padding: 2px 4px; border-radius: 6px; border: 1.5px solid var(--rule); background: var(--card); font-size: .8rem; }
+  .actions select:focus-visible { outline: 3px solid var(--wait); outline-offset: 1px; }
+  .stub.flash { animation: flash .9s ease-out; }
+  @keyframes flash { from { box-shadow: 0 0 0 3px var(--tone); } to { box-shadow: 0 1px 0 var(--rule); } }
+  .slot { border: 2px dashed var(--rule); border-radius: 8px; padding: 9px 10px; font-size: .82rem; color: var(--muted); text-align: center; }
+  .stub .origin { font-size: .72rem; color: var(--muted); }
+  .stub.mine .origin { color: var(--ink); font-weight: 600; }
+  .stub:not(.mine) { border-style: dashed; }
+
+  /* log */
+  .log { margin-top: 18px; }
+  .log h2 { font-size: .8rem; letter-spacing: .12em; color: var(--muted); font-weight: 600; margin: 0 0 8px; display: flex; justify-content: space-between; }
+  .log ol { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow: auto; background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius); }
+  .log li { display: grid; grid-template-columns: 92px 104px 1fr; gap: 10px; padding: 5px 12px; border-bottom: 1px solid var(--rule); font-size: .84rem; }
+  .log li:last-child { border-bottom: 0; }
+  .log time, .log .by { font-family: var(--mono); color: var(--muted); font-size: .78rem; }
+  .log li[data-kind="ok"] .msg { color: var(--go); }
+  .log li[data-kind="warn"] .msg { color: var(--hold); }
+  .log li[data-kind="err"] .msg { color: var(--bad); }
+
+  @media (max-width: 1080px) { .lanes { grid-template-columns: repeat(2, minmax(0, 1fr)); } .board { grid-template-columns: 1fr; } .rules { margin-left: 0; } }
+  @media (max-width: 560px) {
+    .lanes { grid-template-columns: 1fr; }
+    .log li { grid-template-columns: 1fr; gap: 0; }
+    .count .n { font-size: 1.7rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stub.flash { animation: none; }
+    .meter span, .btn { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 class="brand"><span class="mark">#</span>結帳排隊操作台</h1>
+    <span class="instance" id="instance">連線中…</span>
+    <span class="sale" id="sale"></span>
+    <ul class="rules" id="rules" aria-label="這場活動的規則"></ul>
+  </header>
+
+  <section class="board" aria-label="庫存與對帳">
+    <div class="panel">
+      <h2>庫存</h2>
+      <div class="counts">
+        <div class="count shelf"><span class="n" id="n-shelf">–</span><span class="l">架上</span></div>
+        <div class="count held"><span class="n" id="n-held">–</span><span class="l">保留中（未付款）</span></div>
+        <div class="count sold"><span class="n" id="n-sold">–</span><span class="l">已售</span></div>
+      </div>
+      <div id="units" aria-hidden="true"></div>
+    </div>
+    <div class="panel">
+      <h2>對帳（所有分頁、所有 instance 合計）</h2>
+      <dl class="checks">
+        <dt>超賣件數</dt><dd id="c-oversold">–</dd>
+        <dt>重複扣款</dt><dd id="c-dup">–</dd>
+        <dt>架上＋保留＋已售＝初始庫存</dt><dd id="c-balanced">–</dd>
+        <dt>扣款次數／已付款訂單</dt><dd id="c-charges">–</dd>
+        <dt>隊伍中／結帳中</dt><dd id="c-line">–</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section aria-label="新增顧客">
+    <div class="controls">
+      <form id="join-form" autocomplete="off">
+        <input type="text" id="user-id" placeholder="顧客名稱，例如 alice" maxlength="64" aria-label="顧客名稱">
+        <button class="btn primary" type="submit">排隊</button>
+      </form>
+      <button class="btn" type="button" id="add-many">一次來 10 人</button>
+      <label class="toggle"><input type="checkbox" id="auto"> 放行後自動下單 1 件並付款</label>
+      <button class="btn" type="button" id="clear-ended">清掉已結束的</button>
+    </div>
+    <div class="form-error" id="form-error" role="alert"></div>
+    <p class="hint" id="hint"></p>
+  </section>
+
+  <div class="lanes">
+    <section class="lane" data-lane="waiting" aria-labelledby="h-waiting">
+      <h2 id="h-waiting">排隊中 <small data-count="waiting">0</small></h2>
+      <div class="stack" data-stack="waiting"></div>
+    </section>
+    <section class="lane" data-lane="admitted" aria-labelledby="h-admitted">
+      <h2 id="h-admitted">結帳中 <small id="slots-label"></small></h2>
+      <div class="stack" data-stack="admitted"></div>
+      <div class="stack" id="slots"></div>
+    </section>
+    <section class="lane" data-lane="ordered" aria-labelledby="h-ordered">
+      <h2 id="h-ordered">已下單 <small data-count="ordered">0</small></h2>
+      <div class="stack" data-stack="ordered"></div>
+    </section>
+    <section class="lane" data-lane="ended" aria-labelledby="h-ended">
+      <h2 id="h-ended">已結束 <small data-count="ended">0</small></h2>
+      <div class="stack" data-stack="ended"></div>
+    </section>
+  </div>
+
+  <section class="log" aria-labelledby="h-log">
+    <h2 id="h-log"><span>事件</span><span>最新的在最上面</span></h2>
+    <ol id="log"></ol>
+  </section>
+</div>
+
+<script nonce="__CSP_NONCE__">
+"use strict";
+
+// ---------------------------------------------------------------- state
+//
+// board  : the whole sale as the server sees it, refreshed every second. Lanes are drawn only
+//          from this, so every tab on every instance shows the same line and logs the same events.
+// mine   : customers this tab created. This tab sends their heartbeat (polls their ticket);
+//          "close tab" stops it. Customers from other tabs are someone else's to keep alive.
+
+const USER_ID = /^[A-Za-z0-9._@-]{1,64}$/;
+const FINAL_TICKET = new Set(["sold_out", "abandoned", "expired"]);
+const FINAL_ORDER = new Set(["paid", "expired"]);
+const BOARD_REFRESH_MS = 1000;
+const MAX_LOG = 150;
+const MAX_UNITS = 400;
+const MAX_SLOTS_SHOWN = 12;
+
+const state = {
+  config: null,
+  audit: null,
+  auto: false,
+  loaded: false,
+  hiddenSince: null,
+  board: new Map(),
+  mine: new Map(),
+  busy: new Set(),
+  qty: new Map(),
+  cleared: new Set(),
+  seen: new Map(),
+};
+const cards = new Map();
+const $ = (id) => document.getElementById(id);
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const storageKey = () => `checkout-queue:${state.config.saleId}:${state.config.instance}`;
+
+function save() {
+  const plain = [...state.mine].map(([userId, m]) => ({ userId, online: m.online }));
+  localStorage.setItem(storageKey(), JSON.stringify(plain));
+}
+
+function restore() {
+  try {
+    for (const m of JSON.parse(localStorage.getItem(storageKey()) ?? "[]")) {
+      if (USER_ID.test(m.userId)) state.mine.set(m.userId, { online: m.online !== false });
+    }
+  } catch {
+    localStorage.removeItem(storageKey());
+  }
+}
+
+// ---------------------------------------------------------------- api
+
+async function api(method, path, body) {
+  try {
+    const response = await fetch(path, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const text = await response.text();
+    return { status: response.status, ok: response.ok, data: text ? JSON.parse(text) : null, by: response.headers.get("X-Served-By") ?? "?" };
+  } catch (error) {
+    return { status: 0, ok: false, data: { error: String(error), code: "network" }, by: "—" };
+  }
+}
+
+const CODES = {
+  not_admitted: "還沒輪到",
+  admission_expired: "下單時限已過",
+  ticket_used: "這張號碼牌已經用別的數量下過單",
+  sold_out: "賣完了",
+  insufficient_stock: "架上不夠（有人沒付款的話會放回來）",
+  order_expired: "付款時限已過，庫存已放回",
+  unavailable: "Redis 暫時連不上",
+  network: "連不到這台 instance",
+};
+const explain = (r) => `${r.status} ${r.data?.code ?? ""}：${CODES[r.data?.code] ?? r.data?.error ?? ""}`;
+
+// ---------------------------------------------------------------- log
+
+function log(message, kind = "info", by = "") {
+  const item = document.createElement("li");
+  item.dataset.kind = kind;
+  const time = document.createElement("time");
+  const now = new Date();
+  time.textContent = `${now.toLocaleTimeString("zh-TW", { hour12: false })}.${String(now.getMilliseconds()).padStart(3, "0").slice(0, 1)}`;
+  const who = document.createElement("span");
+  who.className = "by";
+  who.textContent = by;
+  const text = document.createElement("span");
+  text.className = "msg";
+  text.textContent = message;
+  item.append(time, who, text);
+  const list = $("log");
+  list.prepend(item);
+  while (list.children.length > MAX_LOG) list.lastChild.remove();
+}
+
+// ---------------------------------------------------------------- the shared board
+
+const TICKET_LABEL = { waiting: "排隊中", admitted: "可以結帳", ordered: "已下單", expired: "下單逾時", abandoned: "被跳過", sold_out: "賣完了" };
+const ORDER_LABEL = { pending_payment: "待付款", paid: "已付款", expired: "付款逾時" };
+
+const isFinal = (e) => FINAL_TICKET.has(e.ticket.status) || FINAL_ORDER.has(e.order?.status);
+const signature = (e) => `${e.ticket.ticketId}/${e.ticket.status}/${e.order?.status ?? ""}`;
+const origin = (userId) => (state.mine.has(userId) ? "本分頁" : "其他分頁或 API");
+
+function describeChange(e, before) {
+  const [ticketId, status, orderStatus] = before.split("/");
+  if (ticketId !== e.ticket.ticketId) return [`${e.ticket.userId} 重新排隊，拿到 #${e.ticket.seq}`, "info"];
+  if (orderStatus !== (e.order?.status ?? "")) {
+    if (!orderStatus) return [`${e.ticket.userId} 下單 ${e.order.quantity} 件，待付款`, "ok"];
+    return [`${e.ticket.userId} 的訂單：${ORDER_LABEL[orderStatus]} → ${ORDER_LABEL[e.order.status]}`, e.order.status === "expired" ? "warn" : "ok"];
+  }
+  const kind = e.ticket.status === "admitted" ? "ok" : FINAL_TICKET.has(e.ticket.status) ? "warn" : "info";
+  return [`${e.ticket.userId}：${TICKET_LABEL[status] ?? "—"} → ${TICKET_LABEL[e.ticket.status]}`, kind];
+}
+
+function applyBoard(entries, by) {
+  const next = new Map();
+  for (const e of entries) {
+    next.set(e.ticket.userId, e);
+    const before = state.seen.get(e.ticket.userId);
+    const now = signature(e);
+    if (state.loaded && before === undefined) {
+      log(`${e.ticket.userId} 排進隊伍 #${e.ticket.seq}（${origin(e.ticket.userId)}）`, "info", by);
+    } else if (state.loaded && before !== now) {
+      const [message, kind] = describeChange(e, before);
+      log(message, kind, by);
+    }
+    state.seen.set(e.ticket.userId, now);
+  }
+  state.board = next;
+  state.loaded = true;
+}
+
+async function refreshBoard() {
+  const [b, a] = await Promise.all([api("GET", "/admin/tickets"), api("GET", "/admin/audit")]);
+  if (a.ok) state.audit = a.data;
+  if (b.ok) applyBoard(b.data, b.by);
+  render();
+  if (state.audit) renderBoard();
+  if (state.auto) {
+    for (const [userId, m] of state.mine) {
+      if (m.online && state.board.get(userId)?.ticket.status === "admitted" && !state.busy.has(userId)) autoBuy(userId);
+    }
+  }
+}
+
+// ---------------------------------------------------------------- actions
+
+async function join(userId) {
+  const r = await api("POST", "/queue/join", { userId });
+  if (!r.ok) {
+    log(`${userId} 排隊 → ${explain(r)}`, "err", r.by);
+    return;
+  }
+  const prev = state.board.get(userId);
+  const sameTicket = prev?.ticket.ticketId === r.data.ticketId;
+  state.mine.set(userId, { online: true });
+  state.cleared.delete(userId);
+  const entry = { ticket: r.data, order: sameTicket ? prev.order : null };
+  state.board.set(userId, entry);
+  state.seen.set(userId, signature(entry));
+  save();
+  log(`${userId} 排隊 → ${r.status}，${sameTicket ? "拿到原本那張" : "拿到"} #${r.data.seq}，排第 ${r.data.position ?? "—"}`, "info", r.by);
+  render();
+}
+
+async function withBusy(userId, work) {
+  state.busy.add(userId);
+  render();
+  try {
+    return await work();
+  } finally {
+    state.busy.delete(userId);
+    await refreshBoard();
+  }
+}
+
+function checkout(userId, twice, quantity = state.qty.get(userId) ?? 1) {
+  const e = state.board.get(userId);
+  return withBusy(userId, async () => {
+    const body = { ticketId: e.ticket.ticketId, quantity };
+    const replies = await Promise.all(Array.from({ length: twice ? 2 : 1 }, () => api("POST", "/checkout", body)));
+    for (const r of replies) {
+      log(r.ok
+        ? `${userId} 下單 ${quantity} 件 → ${r.status} ${r.status === 201 ? "建立訂單" : "回傳同一張訂單"} ${r.data.orderId.slice(0, 8)}…`
+        : `${userId} 下單 ${quantity} 件 → ${explain(r)}`, r.ok ? "ok" : "err", r.by);
+    }
+    if (twice && replies.every((r) => r.ok)) {
+      log(`${userId} 連點兩次：${replies[0].data.orderId === replies[1].data.orderId ? "同一張訂單，庫存只扣一次" : "⚠ 兩張不同的訂單"}`, "ok");
+    }
+    return replies.find((r) => r.ok)?.data ?? null;
+  });
+}
+
+function pay(userId, twice) {
+  const e = state.board.get(userId);
+  return withBusy(userId, async () => {
+    const path = `/orders/${e.order.orderId}/pay`;
+    const replies = await Promise.all(Array.from({ length: twice ? 2 : 1 }, () => api("POST", path)));
+    for (const r of replies) {
+      log(r.ok
+        ? `${userId} 付款 → ${r.status} ${r.status === 201 ? "這次扣款" : "之前已扣，不再扣"}`
+        : `${userId} 付款 → ${explain(r)}`, r.ok ? "ok" : "err", r.by);
+    }
+  });
+}
+
+async function autoBuy(userId) {
+  state.busy.add(userId);
+  await wait(700);
+  state.busy.delete(userId);
+  if (state.board.get(userId)?.ticket.status !== "admitted") return;
+  const order = await checkout(userId, false, 1);
+  if (!order) return;
+  await wait(700);
+  if (state.board.get(userId)?.order?.status === "pending_payment") await pay(userId, false);
+}
+
+async function heartbeat(userId) {
+  const e = state.board.get(userId);
+  if (!e || isFinal(e)) return;
+  const r = await api("GET", `/queue/tickets/${e.ticket.ticketId}`);
+  if (!r.ok) log(`${userId} 輪詢 → ${explain(r)}`, "err", r.by);
+}
+
+function leave(userId) {
+  state.mine.set(userId, { online: false });
+  save();
+  log(`${userId} 關掉分頁，不再輪詢（心跳停止）`, "warn");
+  render();
+}
+
+async function comeBack(userId) {
+  state.mine.set(userId, { online: true });
+  save();
+  log(`${userId} 回到頁面，重新輪詢`);
+  await heartbeat(userId);
+  await refreshBoard();
+}
+
+// ---------------------------------------------------------------- loops
+
+async function boardLoop() {
+  await refreshBoard();
+  setTimeout(boardLoop, BOARD_REFRESH_MS);
+}
+
+async function heartbeatLoop() {
+  const online = [...state.mine].filter(([, m]) => m.online).map(([userId]) => userId);
+  await Promise.all(online.map(heartbeat));
+  setTimeout(heartbeatLoop, state.config.pollIntervalMs);
+}
+
+function tick() {
+  const now = Date.now();
+  for (const [userId, card] of cards) {
+    const e = state.board.get(userId);
+    const countdown = e && deadlineOf(e);
+    if (!countdown) continue;
+    const left = Math.max(0, countdown.at - now);
+    card.querySelector(".line").textContent = left > 0 ? `${countdown.label}剩 ${Math.ceil(left / 1000)} 秒` : "時間到，等系統處理…";
+    card.querySelector(".meter span").style.setProperty("--left", String(Math.min(1, left / countdown.total)));
+  }
+}
+
+function deadlineOf(e) {
+  if (e.ticket.status === "admitted") {
+    return { at: e.ticket.admissionExpiresAtMs, total: state.config.admissionWindowMs, label: "下單" };
+  }
+  if (e.order?.status === "pending_payment") {
+    return { at: e.order.paymentExpiresAtMs, total: state.config.paymentWindowMs, label: `${e.order.quantity} 件，付款` };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- render
+
+function laneOf(e) {
+  const status = e.ticket.status;
+  if (status === "waiting") return "waiting";
+  if (status === "admitted") return "admitted";
+  if (status === "ordered" && e.order?.status !== "expired") return "ordered";
+  return "ended";
+}
+
+// A customer of this tab whose tab was "closed" and whose ticket can still change.
+const isOffline = (e) => state.mine.get(e.ticket.userId)?.online === false && !isFinal(e);
+
+function describe(e) {
+  const t = e.ticket;
+  if (isOffline(e) && t.status === "waiting") return { tone: "gone", tag: "離線", line: "已關掉分頁，心跳停止" };
+  switch (laneOf(e)) {
+    case "waiting":
+      return { tone: "wait", tag: "排隊中", line: `排第 ${t.position}${t.estimatedWaitSeconds != null ? `，約 ${t.estimatedWaitSeconds} 秒` : "，估算中"}` };
+    case "admitted":
+      return { tone: "go", tag: "可以結帳", line: "", meter: true };
+    case "ordered":
+      return e.order?.status === "paid"
+        ? { tone: "sold", tag: "已付款", line: `${e.order.quantity} 件，已付款` }
+        : { tone: "hold", tag: "待付款", line: "", meter: true };
+    default:
+      if (e.order?.status === "expired") return { tone: "bad", tag: "付款逾時", line: "沒付款，庫存已放回" };
+      if (t.status === "abandoned") return { tone: "bad", tag: "被跳過", line: "輪到時沒在輪詢" };
+      if (t.status === "expired") return { tone: "bad", tag: "下單逾時", line: "放行後沒在時限內下單" };
+      return { tone: "gone", tag: "賣完了", line: "沒有庫存，也沒有人保留" };
+  }
+}
+
+function actionsOf(e) {
+  const userId = e.ticket.userId;
+  const mine = state.mine.get(userId);
+  const lane = laneOf(e);
+  if (isOffline(e)) return [["back", "回到頁面"]];
+  const close = mine?.online ? [["leave", "關掉分頁"]] : [];
+  if (lane === "waiting") return close;
+  if (lane === "admitted") return [["qty"], ["checkout", "下單", "go"], ["checkout2", "連點下單"], ...close];
+  if (lane === "ordered" && e.order?.status === "pending_payment") return [["pay", "付款", "go"], ["pay2", "連點付款"]];
+  if (lane === "ended" && e.ticket.status !== "sold_out") return [["rejoin", "重新排隊"]];
+  return [];
+}
+
+function buildCard(userId) {
+  const card = document.createElement("article");
+  card.className = "stub";
+  card.dataset.user = userId;
+  const no = document.createElement("div");
+  no.className = "no";
+  const body = document.createElement("div");
+  body.className = "body";
+  const who = document.createElement("div");
+  who.className = "who";
+  const name = document.createElement("span");
+  name.textContent = userId;
+  const tag = document.createElement("span");
+  tag.className = "tag";
+  who.append(name, tag);
+  const from = document.createElement("div");
+  from.className = "origin";
+  const line = document.createElement("div");
+  line.className = "line";
+  const meter = document.createElement("div");
+  meter.className = "meter";
+  meter.append(document.createElement("span"));
+  const actions = document.createElement("div");
+  actions.className = "actions";
+  body.append(who, from, line, meter, actions);
+  card.append(no, body);
+  return card;
+}
+
+function fillCard(card, e) {
+  const userId = e.ticket.userId;
+  const d = describe(e);
+  const busy = state.busy.has(userId);
+  card.dataset.tone = d.tone;
+  card.classList.toggle("offline", isOffline(e));
+  card.classList.toggle("mine", state.mine.has(userId));
+  card.querySelector(".no").textContent = `#${e.ticket.seq}`;
+  card.querySelector(".tag").textContent = d.tag;
+  card.querySelector(".origin").textContent = origin(userId);
+  if (!d.meter) card.querySelector(".line").textContent = d.line;
+  card.querySelector(".meter").hidden = !d.meter;
+
+  const wanted = actionsOf(e);
+  const key = wanted.map((a) => a[0]).join(",") + (busy ? ":busy" : "");
+  const actions = card.querySelector(".actions");
+  if (actions.dataset.signature === key) return;
+  actions.dataset.signature = key;
+  actions.replaceChildren(...wanted.map(([action, label, style]) => {
+    if (action === "qty") {
+      const select = document.createElement("select");
+      select.dataset.action = "qty";
+      select.setAttribute("aria-label", `${userId} 要買幾件`);
+      for (let n = 1; n <= state.config.maxPerOrder; n++) {
+        select.append(new Option(`${n} 件`, String(n), false, n === (state.qty.get(userId) ?? 1)));
+      }
+      select.disabled = busy;
+      return select;
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `btn${style ? ` ${style}` : ""}`;
+    button.dataset.action = action;
+    button.textContent = label;
+    button.disabled = busy;
+    return button;
+  }));
+}
+
+const ORDER_IN_LANE = {
+  waiting: (a, b) => (a.ticket.position ?? 1e9) - (b.ticket.position ?? 1e9) || a.ticket.seq - b.ticket.seq,
+  admitted: (a, b) => a.ticket.admissionExpiresAtMs - b.ticket.admissionExpiresAtMs,
+  ordered: (a, b) => (a.order?.createdAtMs ?? 0) - (b.order?.createdAtMs ?? 0),
+  ended: (a, b) => b.ticket.seq - a.ticket.seq,
+};
+
+function render() {
+  const byLane = { waiting: [], admitted: [], ordered: [], ended: [] };
+  for (const e of state.board.values()) {
+    const lane = laneOf(e);
+    if (lane === "ended" && state.cleared.has(e.ticket.userId)) continue;
+    byLane[lane].push(e);
+  }
+  const shown = new Set(Object.values(byLane).flat().map((e) => e.ticket.userId));
+  for (const userId of [...cards.keys()]) {
+    if (!shown.has(userId)) {
+      cards.get(userId).remove();
+      cards.delete(userId);
+    }
+  }
+  for (const [lane, entries] of Object.entries(byLane)) {
+    const stack = document.querySelector(`[data-stack="${lane}"]`);
+    entries.sort(ORDER_IN_LANE[lane]);
+    entries.forEach((e, i) => {
+      const userId = e.ticket.userId;
+      const card = cards.get(userId) ?? buildCard(userId);
+      const moved = card.parentElement !== stack;
+      cards.set(userId, card);
+      fillCard(card, e);
+      if (stack.children[i] !== card) stack.insertBefore(card, stack.children[i] ?? null);
+      if (moved && state.loaded) flash(card);
+    });
+    const counter = document.querySelector(`[data-count="${lane}"]`);
+    if (counter) counter.textContent = String(entries.length);
+  }
+  renderSlots(byLane.admitted.length);
+  tick();
+}
+
+function flash(card) {
+  card.classList.remove("flash");
+  void card.offsetWidth;
+  card.classList.add("flash");
+}
+
+function renderSlots(admittedShown) {
+  const active = Math.max(state.audit?.active ?? 0, admittedShown);
+  const free = Math.max(0, state.config.maxActive - active);
+  $("slots-label").textContent = `${active} / ${state.config.maxActive} 個名額`;
+  const slots = Array.from({ length: Math.min(free, MAX_SLOTS_SHOWN) }, () => "空名額");
+  if (free > MAX_SLOTS_SHOWN) slots.push(`還有 ${free - MAX_SLOTS_SHOWN} 個空名額`);
+  $("slots").replaceChildren(...slots.map((label) => {
+    const div = document.createElement("div");
+    div.className = "slot";
+    div.textContent = label;
+    return div;
+  }));
+}
+
+function renderBoard() {
+  const a = state.audit;
+  $("n-shelf").textContent = String(a.stock);
+  $("n-held").textContent = String(a.pendingQuantity);
+  $("n-sold").textContent = String(a.paidQuantity);
+  setCheck("c-oversold", String(a.oversold), a.oversold === 0);
+  setCheck("c-dup", String(a.duplicateCharges), a.duplicateCharges === 0);
+  setCheck("c-balanced", a.stockBalanced ? "成立" : "不成立", a.stockBalanced);
+  setCheck("c-charges", `${a.charges} / ${a.paidOrders}`, a.charges === a.paidOrders);
+  $("c-line").textContent = `${a.waiting} / ${a.active}`;
+  renderUnits(a);
+}
+
+function setCheck(id, text, good) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = good ? "ok" : "bad";
+}
+
+function renderUnits(a) {
+  const box = $("units");
+  if (a.initialStock > MAX_UNITS) {
+    if (!box.firstChild || box.firstChild.className !== "unit-bar") {
+      const bar = document.createElement("div");
+      bar.className = "unit-bar";
+      bar.append(Object.assign(document.createElement("span"), { className: "sold" }), Object.assign(document.createElement("span"), { className: "held" }));
+      box.replaceChildren(bar);
+    }
+    const [sold, held] = box.firstChild.children;
+    sold.style.width = `${(a.paidQuantity / a.initialStock) * 100}%`;
+    held.style.width = `${(a.pendingQuantity / a.initialStock) * 100}%`;
+    return;
+  }
+  if (box.children.length !== a.initialStock || box.className !== "units") {
+    box.className = "units";
+    box.replaceChildren(...Array.from({ length: a.initialStock }, () => Object.assign(document.createElement("span"), { className: "unit" })));
+  }
+  [...box.children].forEach((unit, i) => {
+    unit.className = i < a.paidQuantity ? "unit sold" : i < a.paidQuantity + a.pendingQuantity ? "unit held" : "unit";
+  });
+}
+
+// ---------------------------------------------------------------- events
+
+function wire() {
+  $("join-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("user-id");
+    const userId = input.value.trim();
+    if (!USER_ID.test(userId)) {
+      $("form-error").textContent = "顧客名稱要是 1–64 個英數字，可以用 . _ - @";
+      return;
+    }
+    $("form-error").textContent = "";
+    input.value = "";
+    join(userId);
+  });
+  $("add-many").addEventListener("click", () => {
+    const batch = Math.random().toString(16).slice(2, 6);
+    Array.from({ length: 10 }, (_, i) => `guest-${batch}-${i + 1}`).forEach(join);
+  });
+  $("auto").addEventListener("change", (event) => {
+    state.auto = event.target.checked;
+    log(state.auto ? "開啟自動：本分頁被放行的顧客會自動下單 1 件並付款" : "關閉自動");
+  });
+  $("clear-ended").addEventListener("click", () => {
+    for (const e of state.board.values()) {
+      if (laneOf(e) === "ended") {
+        state.cleared.add(e.ticket.userId);
+        state.mine.delete(e.ticket.userId);
+      }
+    }
+    save();
+    render();
+  });
+  document.querySelector(".lanes").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-action]");
+    if (!button) return;
+    const userId = button.closest(".stub").dataset.user;
+    if (!state.board.has(userId) || state.busy.has(userId)) return;
+    const run = {
+      leave: () => leave(userId),
+      back: () => comeBack(userId),
+      checkout: () => checkout(userId, false),
+      checkout2: () => checkout(userId, true),
+      pay: () => pay(userId, false),
+      pay2: () => pay(userId, true),
+      rejoin: () => join(userId),
+    }[button.dataset.action];
+    run?.();
+  });
+  document.querySelector(".lanes").addEventListener("change", (event) => {
+    if (event.target.dataset.action !== "qty") return;
+    state.qty.set(event.target.closest(".stub").dataset.user, Number(event.target.value));
+  });
+  // Browsers slow down timers in background tabs, so this tab's customers may miss heartbeats there.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      state.hiddenSince = Date.now();
+      return;
+    }
+    const away = state.hiddenSince ? Date.now() - state.hiddenSince : 0;
+    state.hiddenSince = null;
+    if (away > state.config.heartbeatTimeoutMs && [...state.mine.values()].some((m) => m.online)) {
+      log(`這個分頁在背景待了 ${Math.round(away / 1000)} 秒。瀏覽器會放慢背景分頁的計時器，本分頁顧客的心跳可能因此中斷，輪到時會被跳過`, "warn");
+    }
+    refreshBoard();
+  });
+}
+
+function renderHeader(c) {
+  const instance = $("instance");
+  instance.textContent = `${c.instance} · :${location.port}`;
+  let hue = 0;
+  for (const ch of c.instance) hue = (hue * 31 + ch.charCodeAt(0)) % 360;
+  instance.style.setProperty("--inst-h", String(hue));
+  $("sale").textContent = `活動 ${c.saleId}`;
+  const secs = (ms) => `${Math.round(ms / 100) / 10}s`;
+  const rules = [
+    ["同時放行", `${c.maxActive} 人`], ["每單最多", `${c.maxPerOrder} 件`], ["下單時限", secs(c.admissionWindowMs)],
+    ["付款時限", secs(c.paymentWindowMs)], ["心跳逾時", secs(c.heartbeatTimeoutMs)], ["輪詢", secs(c.pollIntervalMs)],
+  ];
+  $("rules").replaceChildren(...rules.map(([k, v]) => {
+    const li = document.createElement("li");
+    const b = document.createElement("b");
+    b.textContent = v;
+    li.append(`${k} `, b);
+    return li;
+  }));
+  $("hint").textContent =
+    "每個分頁、每台 instance 看到的都是整場活動的同一條隊伍。標著「本分頁」的顧客由這個分頁每 " +
+    `${secs(c.pollIntervalMs)} 輪詢一次（就是心跳）；按「關掉分頁」後超過 ${secs(c.heartbeatTimeoutMs)} 沒輪詢，輪到時會被跳過。` +
+    "其他分頁的顧客也可以在這裡下單、付款，請求會打到這台 instance。";
+  document.title = `結帳排隊操作台 · ${c.instance}`;
+}
+
+async function start() {
+  const r = await api("GET", "/admin/config");
+  if (!r.ok) {
+    $("instance").textContent = "連不上這台 instance";
+    log(`讀取設定 → ${explain(r)}`, "err", r.by);
+    return;
+  }
+  state.config = r.data;
+  renderHeader(state.config);
+  restore();
+  wire();
+  log(`已連上 ${state.config.instance}，活動 ${state.config.saleId}${state.mine.size ? `，本分頁有 ${state.mine.size} 位顧客` : ""}`, "info", r.by);
+  await boardLoop();
+  heartbeatLoop();
+  setInterval(tick, 250);
+}
+
+start();
+</script>
+</body>
+</html>

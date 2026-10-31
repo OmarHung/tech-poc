@@ -1,0 +1,8 @@
+# OS / editor files
+.DS_Store
+
+# python
+__pycache__/
+
+# verify run logs (results/ is kept as evidence for the README numbers)
+verify/logs/

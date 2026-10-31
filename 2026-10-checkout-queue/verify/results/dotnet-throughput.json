@@ -1,0 +1,27 @@
+{
+  "lang": "dotnet",
+  "phase": "throughput",
+  "passed": 5,
+  "failures": [],
+  "threads": 32,
+  "instances": 2,
+  "join": {
+    "requests_per_s": 9267,
+    "errors": 0,
+    "n": 46333,
+    "p50_ms": 3.15,
+    "p95_ms": 6.7,
+    "p99_ms": 9.18,
+    "max_ms": 32.63
+  },
+  "poll": {
+    "requests_per_s": 13371,
+    "errors": 0,
+    "n": 66854,
+    "p50_ms": 2.1,
+    "p95_ms": 5.19,
+    "p99_ms": 7.11,
+    "max_ms": 15.5
+  },
+  "waiting_users_supported_at_1s_poll": 13371
+}
