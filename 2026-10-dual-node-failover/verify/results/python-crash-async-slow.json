@@ -1,0 +1,16 @@
+{
+  "impl": "python",
+  "scenario": "crash-async-slow",
+  "title": "Primary killed, async, 10 ms between the nodes",
+  "passed": 3,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 3440,
+    "rto_s": 3.087,
+    "lost_acked_writes": 7,
+    "lost_window_ms": 10.7,
+    "write_p50_ms": 2.53,
+    "write_p99_ms": 4.97,
+    "rejoin_discarded_entries": 7
+  }
+}

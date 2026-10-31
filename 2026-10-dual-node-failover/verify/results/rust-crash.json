@@ -1,0 +1,20 @@
+{
+  "impl": "rust",
+  "scenario": "crash",
+  "title": "Primary killed, then rejoins and takes over again (sync)",
+  "passed": 8,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 3911,
+    "write_p50_ms": 1.61,
+    "write_p99_ms": 4.39,
+    "rto_s": 3.488,
+    "longest_write_gap_s": 3.488,
+    "lost_acked_writes": 0,
+    "rejoin_catch_up_s": 0.173,
+    "rejoin_catch_up_after_ready_s": 0.113,
+    "rejoin_discarded_entries": 0,
+    "second_rto_s": 3.376,
+    "acked_writes_total": 6438
+  }
+}

@@ -1,0 +1,903 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>.NET 版運作說明｜雙機備援機制</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --fg: #1d232b; --muted: #5d6773; --line: #d8dde3; --card: #ffffff; --code-bg: #f0f2f5;
+    --flow: #2563eb; --flow-ink: #ffffff; --fail: #d64545; --idle: #b9c0c8;
+    --gw: #6d5bd0; --node: #0f8b8d; --wit: #b86e0b; --warn-bg: #fff4dc; --warn-fg: #8a5300;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a; --fg: #e4e7eb; --muted: #9aa4b0; --line: #2d333b; --card: #1a1f26; --code-bg: #20262e;
+      --flow: #6ea0ff; --flow-ink: #0b1220; --fail: #ff7272; --idle: #4a525c;
+      --gw: #a596ff; --node: #4cc7c9; --wit: #f0a948; --warn-bg: #3a2c12; --warn-fg: #f5c46b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); line-height: 1.7;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 1.9rem; line-height: 1.3; margin: 0 0 8px; }
+  h2 { font-size: 1.35rem; margin: 56px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 20px 0 8px; }
+  p { margin: 8px 0; }
+  a { color: var(--flow); }
+  .lead { color: var(--muted); font-size: 1.05rem; margin: 0; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 0; }
+  nav.toc a { text-decoration: none; font-size: .9rem; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--fg); background: var(--card); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .86em; }
+  :not(pre) > code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; line-height: 1.55; margin: 10px 0; }
+  pre .c { color: var(--muted); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 16px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; border-top: 4px solid var(--c, var(--line)); }
+  .card h3 { margin: 0 0 4px; }
+  .card .port { color: var(--muted); font-size: .85rem; }
+  .card p { font-size: .93rem; }
+  .gw { --c: var(--gw); } .nd { --c: var(--node); } .wit { --c: var(--wit); } .work { --c: var(--flow); }
+  .tree { background: var(--card); border: 1px solid var(--line); }
+  .note { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; padding: 10px 14px; font-size: .93rem; margin: 12px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: .92rem; background: var(--card); }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+  th { background: var(--code-bg); font-weight: 600; }
+
+  /* interactive flow */
+  .phase-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .phase-buttons button {
+    font: inherit; font-size: .92rem; cursor: pointer; padding: 6px 14px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--card); color: var(--fg);
+  }
+  .phase-buttons button:hover { border-color: var(--flow); }
+  .phase-buttons button:focus-visible { outline: 3px solid var(--flow); outline-offset: 2px; }
+  .phase-buttons button[aria-pressed="true"] { background: var(--flow); border-color: var(--flow); color: var(--flow-ink); font-weight: 600; }
+  .flow-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .flow-svg { width: 100%; height: auto; display: block; }
+  .flow-svg text { fill: var(--fg); font-size: 13px; text-anchor: middle; }
+  .flow-svg text.small { font-size: 11px; fill: var(--muted); }
+  .flow-svg text.role { font-size: 12px; font-weight: 600; fill: var(--warn-fg); }
+  .flow-svg text.edge-label { font-size: 10.5px; fill: var(--muted); }
+  .flow-svg .node rect { fill: var(--card); stroke: var(--c); stroke-width: 2; rx: 8; }
+  .flow-svg .node.gw { --c: var(--gw); } .flow-svg .node.nd { --c: var(--node); } .flow-svg .node.wit { --c: var(--wit); } .flow-svg .node.plain { --c: var(--idle); } .flow-svg .node.work { --c: var(--flow); }
+  .flow-svg .node.primary rect { stroke-width: 3.5; fill: var(--warn-bg); }
+  .flow-svg .node.dim { opacity: .35; }
+  .flow-svg .node.down rect { stroke: var(--fail); stroke-dasharray: 6 4; }
+  .flow-svg path.edge { fill: none; stroke: var(--idle); stroke-width: 2; opacity: .45; marker-end: url(#arrow-idle); }
+  .flow-svg path.edge.on { stroke: var(--flow); opacity: 1; stroke-width: 2.6; stroke-dasharray: 7 5; animation: dash 1s linear infinite; marker-end: url(#arrow-on); }
+  .flow-svg path.edge.fail { stroke: var(--fail); opacity: 1; stroke-width: 2.6; stroke-dasharray: 3 5; marker-end: url(#arrow-fail); }
+  @keyframes dash { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { .flow-svg path.edge.on { animation: none; } }
+  .panel { margin-top: 12px; }
+  .panel dl { display: grid; grid-template-columns: 7.5em 1fr; gap: 6px 14px; margin: 8px 0; }
+  .panel dt { color: var(--muted); }
+  .panel dd { margin: 0; }
+
+  /* step timeline */
+  ol.steps { list-style: none; padding: 0; margin: 16px 0; counter-reset: step; }
+  ol.steps > li { position: relative; padding: 0 0 18px 46px; counter-increment: step; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--c, var(--flow)); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: .9rem;
+  }
+  ol.steps > li::after { content: ""; position: absolute; left: 14px; top: 32px; bottom: 2px; width: 2px; background: var(--line); }
+  ol.steps > li:last-child::after { display: none; }
+  ol.steps .where { font-size: .85rem; color: var(--muted); }
+  ol.steps .who { font-weight: 600; }
+  details { margin: 6px 0; }
+  details summary { cursor: pointer; color: var(--flow); font-size: .9rem; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  footer { margin-top: 64px; color: var(--muted); font-size: .88rem; }
+  .diagram + .diagram { margin-top: 36px; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>雙機備援機制｜.NET 版運作說明</h1>
+  <p class="lead">這頁說明 <code>dotnet/</code> 裡的程式怎麼運作。裡面有三種雙機備援架構：<strong>A. 主備＋資料同步</strong>（兩台資料節點怎麼決定誰是主機、一筆寫入怎麼複寫到另一台）、<strong>B. 熱熱備援</strong>（兩台不通訊、都處理每一筆）、<strong>C. 上游指派</strong>（兩台不通訊、上游把工作派給其中一台）。框架是 ASP.NET Core 10 Minimal API，gateway 用 YARP 2.3 轉發。</p>
+  <nav class="toc" aria-label="目錄">
+    <a href="#overview">1. 全貌</a>
+    <a href="#flow-section">2. 互動流程圖</a>
+    <a href="#journey">3. 一筆資料怎麼流動</a>
+    <a href="#startup">4. 啟動時發生什麼</a>
+    <a href="#design">5. 關鍵設計</a>
+    <a href="#run">6. 怎麼跑</a>
+  </nav>
+</header>
+
+<section id="overview">
+  <h2>1. 全貌：三種架構、六種程式</h2>
+  <h3>架構 A：主備＋資料同步</h3>
+  <p>兩台資料節點跑的是同一支程式（<code>Node</code>），誰當主機是執行時決定的。第三個程序 witness 不存資料，只負責仲裁。client 只認得 gateway。</p>
+  <div class="cards">
+    <div class="card gw">
+      <h3>Gateway</h3>
+      <div class="port">127.0.0.1:8100 ・ <code>src/Gateway/</code></div>
+      <p>client 的唯一入口。每 100 ms 問兩台節點的 <code>/health</code>，把請求轉給回報 <code>role = primary</code> 的那台（兩台都說是主機時選 epoch 較新的）。</p>
+    </div>
+    <div class="card nd">
+      <h3>Node a / Node b</h3>
+      <div class="port">127.0.0.1:8101、8102 ・ <code>src/Node/</code></div>
+      <p>資料節點。主機接受讀寫，並把每筆寫入同步複寫給備機；備機只接收複寫，同時注意主機是不是還活著。資料存在只能附加的 log 檔。</p>
+    </div>
+    <div class="card wit">
+      <h3>Witness</h3>
+      <div class="port">127.0.0.1:8103 ・ <code>src/Witness/</code></div>
+      <p>第三票。一次只把租約（lease）發給一台，每換一次主機 epoch 就加 1；另外記住「備機是不是同步中」，不同步就不准它升格。只存四個欄位。</p>
+    </div>
+  </div>
+
+  <h3>架構 B、C：兩台不通訊</h3>
+  <p>兩台 worker 跑同一支程式（<code>Worker</code>），用 <code>MODE</code> 決定是熱熱備援還是被指派。兩台之間沒有任何連線，只認得上游和下游。</p>
+  <div class="cards">
+    <div class="card gw">
+      <h3>Upstream</h3>
+      <div class="port">127.0.0.1:8120 ・ <code>src/Upstream/</code></div>
+      <p>工作的來源。架構 B 用它的<strong>事件流水帳</strong>：只能附加、可以從任何位置重讀。架構 C 用它的<strong>任務佇列</strong>：每件任務租給一台 worker，租約到期就改派。</p>
+    </div>
+    <div class="card work">
+      <h3>Worker a / Worker b</h3>
+      <div class="port">127.0.0.1:8121、8122 ・ <code>src/Worker/</code></div>
+      <p><code>MODE=hothot</code>：讀全部事件、算帳戶餘額、送結果、存檢查點。<code>MODE=dispatch</code>：租任務、定時心跳、做事、寫結果、回報完成。</p>
+    </div>
+    <div class="card wit">
+      <h3>Sink</h3>
+      <div class="port">127.0.0.1:8123 ・ <code>src/Sink/</code></div>
+      <p>下游。以事件或任務編號去重：第一份結果套用（副作用發生），其他的只計數，分成重複、衝突（內容不同）、過期（attempt 比較舊）。</p>
+    </div>
+  </div>
+
+  <h3>資料夾結構</h3>
+<pre class="tree">dotnet/
+├── DualNodeFailover.slnx         solution：7 個專案 ＋ 6 個測試專案
+├── Directory.Build.props         共用設定：net10.0、nullable、警告一律當錯誤
+├── run.sh                        ./run.sh build | test | node | witness | gateway | upstream | worker | sink
+├── src/Shared/                   共用：錯誤處理、嚴格 JSON、環境變數讀取、witness 和架構 B、C 的 API 合約
+├── src/Witness/
+│   ├── LeaseTable.cs             發租約、換主機時加 epoch、記錄並檢查「備機同步中」
+│   └── WitnessHosting.cs         POST /lease、POST /sync、GET /health
+├── src/Node/
+│   ├── NodeConfig.cs             ARBITER、REPLICATION、LEASE_TTL_MS 等設定與檢查
+│   ├── NodeHosting.cs            DI 註冊與路由：/kv、/health、/internal/replicate、/admin/data
+│   ├── Kv/KvService.cs           client 的讀寫：只有主機能處理，同步模式下要等到安全才回覆
+│   ├── Cluster/
+│   │   ├── NodeState.cs          角色、epoch、兩種租約；備機接收複寫的規則
+│   │   ├── PrimaryTerm.cs        一段主機任期：寫入何時能回 200、備機的同步狀態
+│   │   ├── ElectionWorker.cs     每 0.5 秒：續約、搶主、租約到期就下台
+│   │   ├── ReplicationWorker.cs  主機把 log 一批批送給備機，閒置時送心跳
+│   │   └── RpcClient.cs、WitnessClient.cs   呼叫備機和 witness（逾時 0.5 秒）
+│   └── Storage/
+│       ├── ReplicatedLog.cs      log 本體＋key-value 檢視；Raft 式比對與截斷
+│       └── LogFile.cs            JSON lines 檔，每次附加都寫進作業系統才回傳
+├── src/Gateway/
+│   ├── PrimaryTracker.cs         輪詢兩台的 /health，記住目前的主機
+│   └── GatewayHosting.cs         YARP 轉發；沒有主機時回 503
+├── src/Upstream/                 架構 B、C 的上游
+│   ├── EventLog.cs               事件流水帳：附加、從任何位置讀、沒有新事件時等一下
+│   ├── TaskQueue.cs              任務佇列：租約、心跳、完成、到期改派
+│   └── UpstreamHosting.cs        路由；LeaseReaper 每 0.1 秒把到期的租約放回佇列
+├── src/Worker/
+│   ├── HotHot/HotHotWorker.cs、Ledger.cs          熱熱模式：讀事件、算餘額、送結果、存檢查點
+│   ├── Dispatch/DispatchWorker.cs、LeaseTracker.cs 指派模式：租任務、心跳、檢查租約、寫結果、回報完成
+│   └── WorkClient.cs             呼叫上游和下游，每次呼叫都有逾時
+├── src/Sink/ResultStore.cs       下游：去重，記錄重複、衝突、過期的 attempt
+└── tests/                        xUnit：Witness、Node（含同程序整個叢集）、Gateway、Upstream、Worker（含同程序的兩種架構）、Sink</pre>
+</section>
+
+<section id="flow-section">
+  <h2>2. 互動流程圖：正常、故障與恢復</h2>
+  <div class="diagram" data-diagram="replication">
+  <h3>架構 A：主備＋資料同步</h3>
+  <p>點按鈕切換情境。藍色虛線是正在發生的流量，紅色是失敗的連線，半透明是這個情境沒用到的部分；外框加粗、底色是主機。下方的數字來自 <code>verify/</code> 的實測。</p>
+  <div class="phase-buttons" role="group" aria-label="選擇情境">
+    <button type="button" data-phase-btn="normal" aria-pressed="true">正常運作</button>
+    <button type="button" data-phase-btn="crash" aria-pressed="false">主機崩潰</button>
+    <button type="button" data-phase-btn="failback" aria-pressed="false">舊主機加回來</button>
+    <button type="button" data-phase-btn="partition" aria-pressed="false">網路分區（有 witness）</button>
+    <button type="button" data-phase-btn="splitbrain" aria-pressed="false">網路分區（沒有 witness）</button>
+    <button type="button" data-phase-btn="witness" aria-pressed="false">witness 掛掉</button>
+    <button type="button" data-phase-btn="stale" aria-pressed="false">備機落後時主機又掛</button>
+  </div>
+
+  <div class="flow-wrap">
+    <svg id="flow" class="flow-svg" viewBox="0 0 960 420" role="img" aria-labelledby="flow-title flow-desc">
+      <title id="flow-title">雙機備援流程圖</title>
+      <desc id="flow-desc">client 經過 gateway 連到 node a 或 node b。兩台節點之間互相複寫，兩台都可以向 witness 取得租約。</desc>
+      <defs>
+        <marker id="arrow-idle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--idle)"/></marker>
+        <marker id="arrow-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--flow)"/></marker>
+        <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--fail)"/></marker>
+      </defs>
+
+      <g class="node plain" data-node="client"><rect x="16" y="182" width="100" height="56"/><text x="66" y="215">client</text></g>
+      <g class="node gw" data-node="gw">
+        <rect x="160" y="165" width="150" height="90"/>
+        <text x="235" y="197">Gateway</text><text class="small" x="235" y="216">:8100</text><text class="small" x="235" y="236">轉給 role=primary</text>
+      </g>
+      <g class="node nd" data-node="a">
+        <rect x="400" y="30" width="230" height="120"/>
+        <text x="515" y="62">Node a</text><text class="small" x="515" y="82">:8101</text>
+        <text class="role" x="515" y="112" data-role="a"></text>
+      </g>
+      <g class="node nd" data-node="b">
+        <rect x="400" y="270" width="230" height="120"/>
+        <text x="515" y="302">Node b</text><text class="small" x="515" y="322">:8102</text>
+        <text class="role" x="515" y="352" data-role="b"></text>
+      </g>
+      <g class="node wit" data-node="w">
+        <rect x="740" y="150" width="200" height="120"/>
+        <text x="840" y="182">Witness</text><text class="small" x="840" y="201">:8103</text>
+        <text class="role" x="840" y="232" data-role="w"></text>
+      </g>
+
+      <!-- edges are drawn after the boxes so the box fills never hide them -->
+      <path class="edge" data-edge="client" d="M116 210 H158"/>
+      <path class="edge" data-edge="gw-a" d="M310 195 C 355 195, 355 95, 398 95"/>
+      <path class="edge" data-edge="gw-b" d="M310 225 C 355 225, 355 325, 398 325"/>
+      <path class="edge" data-edge="a-b" d="M495 150 V268"/>
+      <path class="edge" data-edge="b-a" d="M535 270 V152"/>
+      <text class="edge-label" x="582" y="214">複寫／心跳</text>
+      <path class="edge" data-edge="a-w" d="M630 90 C 690 90, 700 170, 738 180"/>
+      <path class="edge" data-edge="b-w" d="M630 330 C 690 330, 700 250, 738 240"/>
+      <text class="edge-label" x="700" y="122">租約</text>
+      <text class="edge-label" x="700" y="304">租約</text>
+    </svg>
+
+    <div class="panel" data-panel="normal">
+      <h3>正常運作：a 是主機</h3>
+      <dl>
+        <dt>選主</dt><dd>a 每 0.5 秒向 witness 續約一次（<code>ElectionWorker.RenewAsync()</code>），租約 3 秒。b 一直收到 a 的複寫和心跳，所以不會去搶。</dd>
+        <dt>寫入</dt><dd>client → gateway → a。a 寫進自己的 log，再送給 b；b 回覆收到後，a 才回 200 給 client。</dd>
+        <dt>witness 記錄</dt><dd>租約在 a，epoch 1，備機同步中（b 可以接手）。</dd>
+        <dt>實測</dt><dd>本機寫入 p50 0.94 ms、p99 2.03 ms；兩台之間加 10 ms 單程延遲時 p50 41 ms。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="crash" hidden>
+      <h3>主機崩潰（kill -9）：b 接手</h3>
+      <dl>
+        <dt>偵測</dt><dd>b 超過 3 秒沒聽到 a（<code>NodeState.TryBeginCandidacy()</code>），向 witness 要租約。a 最後一次續約的租約這時也到期了，b 又是同步中，witness 就把租約交給 b，epoch 變 2。</dd>
+        <dt>切換</dt><dd>b 升格，先請 witness 記下「a 不同步」，之後就能單獨確認寫入（Solo）。gateway 下一次輪詢就改送 b。</dd>
+        <dt>資料</dt><dd>a 確認過的每一筆，b 都已經收到過（同步複寫的規則），所以沒有遺失。</dd>
+        <dt>實測</dt><dd>RTO 3.29 秒（租約 3 秒＋續約間隔＋gateway 輪詢），4,065 筆確認的寫入遺失 0 筆。租約改 1 秒時 RTO 1.14 秒。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="failback" hidden>
+      <h3>舊主機加回來：a 變成備機</h3>
+      <dl>
+        <dt>重新加入</dt><dd>a 重啟後一律以備機身分啟動，馬上收到 b 的複寫。請求裡的 epoch 2 比 a 記得的 1 新，a 就接受 b 是主機（<code>NodeState.HandleReplicate()</code>）。</dd>
+        <dt>對齊資料</dt><dd>b 用 (index, epoch) 跟 a 的 log 比對。a 崩潰前寫進本機、但還沒送到 b 的幾筆（從沒回過 200）會被丟掉，再補上 b 的新資料（<code>ReplicatedLog.AppendFrom()</code>）。</dd>
+        <dt>恢復可接手</dt><dd>a 追上後，b 用最新的版本號告訴 witness「備機同步中」，a 就又能接手了。</dd>
+        <dt>實測</dt><dd>從啟動到追上 0.39 秒（含程式啟動）。接著再砍 b，a 3.49 秒接手，兩次切換共 6,598 筆寫入遺失 0 筆。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="partition" hidden>
+      <h3>網路分區：a 跟 b、witness 都斷了，但 client 還連得到 a</h3>
+      <dl>
+        <dt>a 那邊</dt><dd>寫入送不到 b，等 1 秒後想請 witness 允許單獨確認，但 witness 也連不到，只能回 503。2.7 秒後 a 的租約到期，連讀取都停止。</dd>
+        <dt>b 那邊</dt><dd>3 秒沒聽到 a，向 witness 要到租約（epoch 2），開始服務。</dd>
+        <dt>網路恢復</dt><dd>a 看到 epoch 2，轉成備機，丟掉 8 筆從沒確認過的寫入，0.3 秒內兩邊資料一致。</dd>
+        <dt>實測</dt><dd>舊主機在斷線後確認了 0 筆，同時有兩台主機確認寫入 0 次，遺失 0 筆，b 3.28 秒接手。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="splitbrain" hidden>
+      <h3>同樣的分區，但沒有 witness（<code>ARBITER=none</code>，對照組）</h3>
+      <dl>
+        <dt>a 那邊</dt><dd>只覺得「備機連不到」，沒有人可以問，就自己繼續確認寫入。</dd>
+        <dt>b 那邊</dt><dd>3 秒＋1.5 秒的優先權延遲沒聽到 a，就自己升格成 epoch 2（實測 4.80 秒）。現在兩台都是主機。</dd>
+        <dt>網路恢復</dt><dd>a 看到 epoch 2 而下台，它在分區期間確認的寫入跟 b 的 log 對不上，整批被丟掉，client 不會收到任何通知。</dd>
+        <dt>實測</dt><dd>兩台同時確認寫入 1,376 筆，恢復後 3,344 筆已確認的寫入消失。這就是需要 witness 的原因。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="witness" hidden>
+      <h3>witness 掛掉 6 秒</h3>
+      <dl>
+        <dt>為什麼沒事</dt><dd>a 有兩種租約：witness 給的，和 b 給的「承諾」（b 每次接受複寫，就承諾 3 秒內不搶主）。只要其中一個有效，a 就能繼續服務，等於 3 票中拿到 2 票。</dd>
+        <dt>寫入</dt><dd>照常同步複寫到 b，不需要 witness 參與。</dd>
+        <dt>witness 回來</dt><dd>從檔案讀回狀態（租約在 a），a 下一次續約就恢復。</dd>
+        <dt>實測</dt><dd>5,481 筆寫入 0 失敗，最長空窗 0.02 秒，a 從沒下台。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="stale" hidden>
+      <h3>備機落後時主機又掛：寧可停機也不丟資料</h3>
+      <dl>
+        <dt>第一步</dt><dd>b 先掛。a 的寫入等 b 等了 1 秒，請 witness 記下「b 不同步」後單獨確認（Solo），共 1,572 筆只有 a 有。</dd>
+        <dt>第二步</dt><dd>a 也掛了，接著 b 先回來。b 向 witness 要租約，witness 拒絕：「b 可能缺少已確認的寫入，等 a 回來」。gateway 找不到主機，回 503。</dd>
+        <dt>a 回來</dt><dd>witness 把租約還給 a（同一個 epoch），a 繼續服務，b 再從 a 追上。</dd>
+        <dt>實測</dt><dd>停機 11.7 秒（等 a 回來），遺失 0 筆。代價是可用性：要強制讓 b 接手只能人工介入並接受遺失。</dd>
+      </dl>
+    </div>
+  </div>
+  </div>
+
+  <div class="diagram" data-diagram="work">
+  <h3>架構 B、C：兩台不通訊</h3>
+  <p>同一張圖，上游是事件流水帳（B）或任務佇列（C）。兩台 worker 之間沒有線。</p>
+  <div class="phase-buttons" role="group" aria-label="選擇架構 B、C 的情境">
+    <button type="button" data-phase-btn="hh-normal" aria-pressed="true">B：正常</button>
+    <button type="button" data-phase-btn="hh-crash" aria-pressed="false">B：a 掛掉</button>
+    <button type="button" data-phase-btn="hh-replay" aria-pressed="false">B：a 重啟補讀</button>
+    <button type="button" data-phase-btn="hh-skip" aria-pressed="false">B：重啟沒補讀（錯）</button>
+    <button type="button" data-phase-btn="d-normal" aria-pressed="false">C：正常</button>
+    <button type="button" data-phase-btn="d-crash" aria-pressed="false">C：a 被砍</button>
+    <button type="button" data-phase-btn="d-pause" aria-pressed="false">C：a 被凍結</button>
+    <button type="button" data-phase-btn="d-sinkcut" aria-pressed="false">C：連不到下游</button>
+    <button type="button" data-phase-btn="d-acklost" aria-pressed="false">C：回報遺失</button>
+  </div>
+
+  <div class="flow-wrap">
+    <svg id="flow2" class="flow-svg" viewBox="0 0 960 420" role="img" aria-labelledby="flow2-title flow2-desc">
+      <title id="flow2-title">架構 B、C 流程圖</title>
+      <desc id="flow2-desc">verify 把事件或任務送進 upstream；worker a 和 worker b 各自向 upstream 拿工作，把結果送到 sink。兩台 worker 之間沒有連線。</desc>
+
+      <g class="node plain" data-node="producer"><rect x="16" y="182" width="100" height="56"/><text x="66" y="208">verify</text><text class="small" x="66" y="226">產生工作</text></g>
+      <g class="node gw" data-node="up">
+        <rect x="160" y="150" width="180" height="120"/>
+        <text x="250" y="182">Upstream</text><text class="small" x="250" y="201">:8120</text>
+        <text class="role" x="250" y="232" data-role="up"></text>
+      </g>
+      <g class="node work" data-node="a">
+        <rect x="420" y="30" width="250" height="120"/>
+        <text x="545" y="62">Worker a</text><text class="small" x="545" y="82">:8121</text>
+        <text class="role" x="545" y="112" data-role="a"></text>
+      </g>
+      <g class="node work" data-node="b">
+        <rect x="420" y="270" width="250" height="120"/>
+        <text x="545" y="302">Worker b</text><text class="small" x="545" y="322">:8122</text>
+        <text class="role" x="545" y="352" data-role="b"></text>
+      </g>
+      <g class="node wit" data-node="sink">
+        <rect x="750" y="150" width="190" height="120"/>
+        <text x="845" y="182">Sink</text><text class="small" x="845" y="201">:8123</text>
+        <text class="role" x="845" y="232" data-role="sink"></text>
+      </g>
+
+      <path class="edge" data-edge="producer" d="M116 210 H158"/>
+      <path class="edge" data-edge="up-a" d="M340 185 C 380 185, 380 90, 418 90"/>
+      <path class="edge" data-edge="up-b" d="M340 235 C 380 235, 380 330, 418 330"/>
+      <text class="edge-label" x="395" y="214">拿工作</text>
+      <path class="edge" data-edge="a-sink" d="M670 90 C 715 90, 715 175, 748 180"/>
+      <path class="edge" data-edge="b-sink" d="M670 330 C 715 330, 715 245, 748 240"/>
+      <text class="edge-label" x="725" y="214">送結果</text>
+      <text class="edge-label" x="545" y="214">（兩台之間沒有連線）</text>
+    </svg>
+
+    <div class="panel" data-panel="hh-normal">
+      <h3>架構 B 正常運作：兩台都做每一筆</h3>
+      <dl>
+        <dt>上游</dt><dd>事件流水帳，只能附加，可以從任何位置重讀（<code>EventLog.ReadAsync()</code>）。</dd>
+        <dt>worker</dt><dd>各自從自己的位置往後讀，依序更新帳戶餘額，每筆送一個結果（<code>event-&lt;編號&gt;</code> → <code>帳戶:餘額</code>）。一批送完才存檢查點。</dd>
+        <dt>下游</dt><dd>同一個事件收到兩份，第一份套用、第二份記成重複（<code>ResultStore.Record()</code>）。</dd>
+        <dt>實測</dt><dd>1,748 筆事件下游收到 3,039 份：沒有去重的話，副作用會多發生 1,291 次。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="hh-crash" hidden>
+      <h3>架構 B：a 被砍</h3>
+      <dl>
+        <dt>發生什麼</dt><dd>什麼都不用做。b 本來就在處理每一筆，沒有偵測、沒有切換。</dd>
+        <dt>實測</dt><dd>下游最長 24 ms 沒有新結果，跟平常一樣；1,748 筆全部有結果、全部正確。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="hh-replay" hidden>
+      <h3>架構 B：a 重啟，從檢查點補讀</h3>
+      <dl>
+        <dt>補讀</dt><dd>a 讀回 <code>checkpoint.json</code>（讀到哪、各帳戶餘額），從那裡往後讀，停機期間的事件一筆不漏。</dd>
+        <dt>重送</dt><dd>被砍時已經送出、但還沒存進檢查點的那批會再送一次，下游當成重複忽略。</dd>
+        <dt>實測</dt><dd>停機 3 秒間的約 600 筆，從下重啟指令算起 0.47 秒補完（含程式啟動）；之後再砍 b，a 獨自繼續，最後的餘額跟正確答案完全一樣。網路斷 3 秒的情況，恢復後 0.12 秒補完。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="hh-skip" hidden>
+      <h3>架構 B 的錯誤做法：重啟時直接從最新的事件開始（<code>START_FROM=latest</code>）</h3>
+      <dl>
+        <dt>發生什麼</dt><dd>a 的餘額少了停機期間的事件，之後每一筆受影響帳戶的結果都跟 b 不同。下游先收到誰的就用誰的。</dd>
+        <dt>實測</dt><dd>不一致 473 筆；b 掛掉之後，下游套用了 505 筆錯誤結果。另一種錯是結果帶本機時鐘（<code>DETERMINISTIC=false</code>）：只有 4% 不一致，偶發，最難發現。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="d-normal" hidden>
+      <h3>架構 C 正常運作：上游把每件任務租給一台</h3>
+      <dl>
+        <dt>租任務</dt><dd>worker 向上游要任務（<code>TaskQueue.LeaseAsync()</code>），拿到 <code>{id, input, attempt, ttlMs}</code>，租約 2 秒。</dd>
+        <dt>做事</dt><dd>每 1/3 個租約送一次心跳延長租約，做完先寫結果到下游，再向上游回報完成（<code>DispatchWorker.RunAsync()</code>）。</dd>
+        <dt>實測</dt><dd>每秒 5 件、每件 300 ms，兩台輪流接，任務延遲 p50 約 1 秒。每件做 3 秒（比租約長）時靠心跳延長，0 次被誤判改派。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="d-crash" hidden>
+      <h3>架構 C：a 做到一半被砍</h3>
+      <dl>
+        <dt>發生什麼</dt><dd>a 不再心跳，租約到期後上游把那件任務放回佇列最前面（<code>TaskQueue.ExpireOverdue()</code>），attempt 變 2，b 接手。其他任務不受影響。</dd>
+        <dt>實測</dt><dd>那件任務 2.34 秒後完成（租約 2 秒＋做事 0.3 秒），51 件全部正確。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="d-pause" hidden>
+      <h3>架構 C：a 被凍結 4 秒（長時間 GC、VM 暫停）</h3>
+      <dl>
+        <dt>發生什麼</dt><dd>任務改派給 b。a 恢復後還以為任務是自己的，但寫結果前先檢查自己的租約（<code>LeaseTracker.IsValid</code>）：從送出請求的時間起算、提早 10% 結束，早就過期了，於是放棄。</dd>
+        <dt>實測</dt><dd>有檢查時 0 次重複寫入。不檢查的對照組（<code>LEASE_CHECK=off</code>）多寫 1 次；這次剛好 b 的結果先到，下游才認得出那是過期的 attempt。</dd>
+        <dt>還剩的空窗</dt><dd>寫結果的逾時不超過剩下的租約，但如果剛好在「檢查完、請求已經送出」之後才被凍結，還是會晚到。所以下游的去重不能省。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="d-sinkcut" hidden>
+      <h3>架構 C：a 連不到下游，但心跳照常送到上游</h3>
+      <dl>
+        <dt>問題</dt><dd>心跳一直成功，租約一直被延長，上游以為 a 好好的，另一台永遠接不到這件任務。心跳只證明 worker 活著，不證明它做得完。</dd>
+        <dt>解法</dt><dd>a 寫不出結果超過一個租約就放手（<code>DispatchWorker.DeliverAsync()</code>），心跳跟著停，租約到期後改派給 b。</dd>
+        <dt>實測</dt><dd>那件任務 4.48 秒後由 b 完成：a 先試 2 秒，租約再 2 秒到期。放手時如果主動通知上游，還能再快約 2 秒。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="d-acklost" hidden>
+      <h3>架構 C：a 做完、寫了結果，但回報不出去</h3>
+      <dl>
+        <dt>發生什麼</dt><dd>a 到上游的連線斷了。上游收不到心跳和完成回報，租約到期後改派給 b，b 再做一次。</dd>
+        <dt>為什麼避免不了</dt><dd>先寫結果、再回報完成，兩步之間任何中斷都會這樣：這就是 at-least-once。所以下游一定要以任務編號去重。</dd>
+        <dt>實測</dt><dd>那件任務下游收到兩份，只套用一份。</dd>
+      </dl>
+    </div>
+  </div>
+  </div>
+</section>
+
+<section id="journey">
+  <h2>3. 一筆資料怎麼流動</h2>
+  <h3>架構 A：一筆寫入怎麼複寫到另一台</h3>
+  <p>以正常運作時的 <code>PUT /kv/order-1 {"value":"paid"}</code> 為例（a 是主機、同步複寫），從進門到回 200 經過這些程式碼：</p>
+  <ol class="steps">
+    <li style="--c: var(--gw)">
+      <div class="who">Gateway 轉給目前的主機</div>
+      <div class="where"><code>src/Gateway/GatewayHosting.cs</code> 的 <code>MapGateway()</code>、<code>PrimaryTracker.cs</code> 的 <code>Current</code></div>
+      <p><code>PrimaryTracker</code> 背景每 100 ms 輪詢兩台的 <code>/health</code>，<code>Choose()</code> 挑出回報 <code>primary</code> 且 epoch 最大的。轉發交給 YARP 的 <code>IHttpForwarder.SendAsync()</code>；節點回 503 或連不上時立刻再輪詢一次（<code>Nudge()</code>）。</p>
+    </li>
+    <li style="--c: var(--node)">
+      <div class="who">主機檢查自己的租約，寫進本機 log</div>
+      <div class="where"><code>NodeHosting.cs</code> 的 <code>PUT /kv/{key}</code> → <code>Kv/KvService.cs</code> 的 <code>PutAsync()</code> → <code>Cluster/NodeState.cs</code> 的 <code>AppendAsPrimary()</code></div>
+      <p>在同一把鎖裡確認「我是主機而且租約還有效」，再附加到 log。下台（step down）也要拿這把鎖，所以不可能在下台之後還寫進去。</p>
+<pre>public LogEntry AppendAsPrimary(string key, string value, out PrimaryTerm term)
+{
+    lock (_gate)
+    {
+        term = ServingTermLocked() ?? throw NotPrimary();
+        var entry = Log.Append(term.Epoch, key, value);
+        term.NotifyAppended();
+        return entry;
+    }
+}</pre>
+      <p><code>Log.Append()</code>（<code>Storage/ReplicatedLog.cs</code>）給它下一個 index 和目前的 epoch，由 <code>LogFile.Append()</code> 寫成一行 JSON，透過沒有緩衝的 <code>FileStream</code> 直接交給作業系統，程序被砍掉也不會不見。寫入失敗時會把寫到一半的資料截掉；啟動時也會丟掉最後一行寫到一半的殘骸、補上少掉的換行，下一筆才不會黏在半行後面。</p>
+    </li>
+    <li style="--c: var(--node)">
+      <div class="who">複寫迴圈被叫醒，送出這一批</div>
+      <div class="where"><code>Cluster/ReplicationWorker.cs</code> 的 <code>ReplicateTermAsync()</code></div>
+      <p><code>NotifyAppended()</code> 叫醒等待中的複寫迴圈。它從 <code>nextIndex</code> 讀最多 256 筆，連同前一筆的 (index, epoch) 送到 b 的 <code>POST /internal/replicate</code>。一次只送一批，回來才送下一批；沒有新資料時每 0.5 秒送一次空的當心跳。</p>
+    </li>
+    <li style="--c: var(--node)">
+      <div class="who">備機檢查 epoch 和前一筆，寫進自己的 log</div>
+      <div class="where">b 的 <code>NodeState.HandleReplicate()</code> → <code>ReplicatedLog.AppendFrom()</code></div>
+      <p>epoch 比自己知道的舊 → 拒絕（被換掉的舊主機就是這樣被擋下的）。前一筆對不上 → 回 <code>mismatch</code>，主機往回找。對得上 → 附加，並記下「剛聽到主機」：這等於承諾 3 秒內不搶主，回覆裡的 <code>promiseMs</code> 就是這個承諾。</p>
+    </li>
+    <li style="--c: var(--node)">
+      <div class="who">主機收到回覆：延長租約、推進進度</div>
+      <div class="where"><code>ReplicationWorker.ReplicateTermAsync()</code> 後半 → <code>PrimaryTerm.RecordReplicated()</code></div>
+<pre><span class="c">// The standby accepted this node as primary and promised not to seek the lease for a while.</span>
+state.ExtendPeerLease(term, sentAt + TimeSpan.FromMilliseconds(reply.PromiseMs) - config.LeaseSafetyMargin);
+<span class="c">// ……</span>
+nextIndex = reply.MatchIndex + 1;
+if (term.RecordReplicated(reply.MatchIndex) &amp;&amp; inSyncCall.IsCompleted)
+{
+    inSyncCall = term.TryMarkInSyncAsync(ct);
+}</pre>
+      <p>租約從「送出請求的時間」起算，再提早 10% 結束，所以主機一定比備機先放手。</p>
+    </li>
+    <li style="--c: var(--node)">
+      <div class="who">等待中的寫入確認已經安全，回 200</div>
+      <div class="where"><code>KvService.PutAsync()</code> 等在 <code>PrimaryTerm.WaitDurableAsync()</code></div>
+      <p>這筆的 index 小於等於 b 已確認的 <code>MatchIndex</code>，就可以回覆。如果 b 超過 1 秒都沒確認，改請 witness 同意「單獨確認」（<code>TryGoSoloAsync()</code>）；witness 同意後 b 就不能升格，這時只存在 a 的寫入也算安全了。</p>
+      <details><summary>看 WaitDurableAsync() 的程式碼</summary>
+<pre>public async Task WaitDurableAsync(long index, TimeSpan timeout, MonotonicClock clock, CancellationToken ct)
+{
+    var deadline = clock.Now + timeout;
+    while (true)
+    {
+        Task progress;
+        lock (_gate)
+        {
+            if (index &lt;= _matchIndex || _peerState == PeerState.Solo)
+            {
+                return;
+            }
+            if (_ended.IsCancellationRequested)
+            {
+                throw new UnavailableException("lost the primary role before the write reached the standby");
+            }
+            progress = _progress.Task;
+        }
+        var remaining = deadline - clock.Now;
+        if (remaining &lt;= TimeSpan.Zero)
+        {
+            if (!await TryGoSoloAsync())
+            {
+                throw new UnavailableException("standby unreachable and the witness did not allow going on alone");
+            }
+            continue;
+        }
+        try
+        {
+            await progress.WaitAsync(remaining, clock.Time, ct);
+        }
+        catch (TimeoutException)
+        {
+            // Deadline reached; the loop asks the witness.
+        }
+    }
+}</pre>
+      </details>
+    </li>
+  </ol>
+
+  <h3>每種狀況在哪裡被處理</h3>
+  <table>
+    <thead><tr><th>狀況</th><th>在哪裡</th><th>結果</th></tr></thead>
+    <tbody>
+      <tr><td>key 或 value 格式不對、不是 JSON</td><td>第 2 步 <code>KvService.ValidateKey()</code>、<code>ReadJsonAsync()</code></td><td>400</td></tr>
+      <tr><td>送到備機，或主機的租約剛到期</td><td>第 2 步 <code>AppendAsPrimary()</code></td><td>503 <code>not primary</code>，gateway 立刻重新找主機</td></tr>
+      <tr><td>還沒有任何主機（切換中）</td><td>第 1 步 gateway</td><td>503 <code>no primary available</code></td></tr>
+      <tr><td>被換掉的舊主機還在送複寫</td><td>第 4 步 epoch 比較</td><td>拒絕；舊主機看到新 epoch 就下台</td></tr>
+      <tr><td>備機缺資料或有分歧的舊資料</td><td>第 4 步 (index, epoch) 比對</td><td><code>mismatch</code>，主機往回找，備機截掉分歧的部分</td></tr>
+      <tr><td>備機 1 秒沒回應</td><td>第 6 步，請 witness 允許單獨確認</td><td>witness 同意就 200，否則 503</td></tr>
+      <tr><td>等待中主機被換掉</td><td>第 6 步 <code>_ended</code></td><td>503（這筆可能存活也可能被丟掉，client 要當作不確定）</td></tr>
+    </tbody>
+  </table>
+  <p class="note">client 收到 503 或逾時的寫入，結果是「不確定」：可能已經在新主機上，也可能被丟掉。正式系統要加冪等鍵，讓 client 可以安全重送。</p>
+
+  <h3>架構 B：一筆事件怎麼被兩台各自處理</h3>
+  <ol class="steps">
+    <li style="--c: var(--gw)">
+      <div class="who">verify 把事件加進上游的流水帳</div>
+      <div class="where"><code>POST /events</code> → <code>src/Upstream/EventLog.cs</code> 的 <code>Append()</code></div>
+      <p>事件拿到下一個編號，叫醒所有正在等新事件的讀取。流水帳只能附加，不會刪。</p>
+    </li>
+    <li style="--c: var(--flow)">
+      <div class="who">兩台 worker 各自讀到它</div>
+      <div class="where"><code>src/Worker/HotHot/HotHotWorker.cs</code> 的 <code>ExecuteAsync()</code> → <code>WorkClient.ReadEventsAsync()</code></div>
+      <p>每台用自己的位置讀（<code>GET /events?after=…&amp;waitMs=500</code>），沒有新事件時上游會等一下再回。兩台不知道彼此存在。</p>
+    </li>
+    <li style="--c: var(--flow)">
+      <div class="who">更新餘額、送出結果，整批送完才存檢查點</div>
+      <div class="where"><code>Ledger.Apply()</code>、<code>DeliverAsync()</code>、<code>Save()</code></div>
+<pre>foreach (var logged in page.Events)
+{
+    var (next, balance) = ledger.Apply(logged);
+    await DeliverAsync(new ResultRecord($"event-{logged.Seq}", config.WorkerId, 0, Format(logged, balance)), stoppingToken);
+    ledger = next;
+}
+if (page.Events.Count &gt; 0)
+{
+    <span class="c">// After delivering: a crash before this line means re-sending the batch, never skipping it.</span>
+    Save(ledger);
+    status.Ledger = ledger;
+}</pre>
+      <p><code>Ledger</code> 只依事件和順序計算，兩台看到同樣的事件就算出同樣的餘額。送結果會一直重試到下游回應為止。</p>
+    </li>
+    <li style="--c: var(--wit)">
+      <div class="who">下游去重</div>
+      <div class="where"><code>src/Sink/ResultStore.cs</code> 的 <code>Record()</code></div>
+      <p>第一份套用（201），內容一樣的第二份是重複（200），內容不同的是衝突（409，保留第一份並計數）。</p>
+    </li>
+  </ol>
+
+  <h3>架構 C：一件任務怎麼被指派</h3>
+  <ol class="steps">
+    <li style="--c: var(--gw)">
+      <div class="who">worker 租到任務</div>
+      <div class="where"><code>src/Upstream/TaskQueue.cs</code> 的 <code>LeaseAsync()</code></div>
+      <p>先把到期的租約放回佇列最前面，再把最前面的任務交給這台 worker：attempt 加 1，租約從現在起 2 秒。佇列空的話最多等 0.5 秒。</p>
+    </li>
+    <li style="--c: var(--flow)">
+      <div class="who">邊做邊心跳，寫結果前先檢查租約</div>
+      <div class="where"><code>src/Worker/Dispatch/DispatchWorker.cs</code> 的 <code>RunAsync()</code>、<code>HeartbeatAsync()</code>；<code>LeaseTracker.cs</code></div>
+<pre>await Task.Delay(config.WorkTime, time, ct); <span class="c">// the work itself</span>
+if (!StillHolds(lease, tracker, "before writing the result"))
+{
+    return;
+}
+status.TaskPhase(lease.Id, "delivering");
+var result = new ResultRecord($"task-{lease.Id}", config.WorkerId, lease.Attempt, Compute(lease.Input));
+if (!await DeliverAsync(lease, tracker, result, ct))
+{
+    return;
+}
+status.TaskPhase(lease.Id, "completing");
+var completed = await CompleteAsync(lease, tracker, ct);</pre>
+      <p>worker 自己算租約：從送出請求的時間起算，提早 10% 結束，所以一定比上游先放手。心跳用固定間隔（<code>PeriodicTimer</code>），每次最多等一個間隔，成功就延長；上游回 409 就立刻作廢。寫結果的逾時不超過剩下的租約，寫不出來超過一個租約就放手。</p>
+    </li>
+    <li style="--c: var(--wit)">
+      <div class="who">先寫結果，再回報完成</div>
+      <div class="where"><code>WorkClient.DeliverAsync()</code> → <code>ResultStore.Record()</code>；<code>WorkClient.CompleteAsync()</code> → <code>TaskQueue.Complete()</code></div>
+      <p>回報時如果租約已經不是自己的（被改派了），上游回 409 並記成過期的完成回報。兩步之間斷掉，任務會被改派再做一次，下游以任務編號去重。</p>
+    </li>
+  </ol>
+
+  <h3>架構 B、C 的狀況在哪裡被處理</h3>
+  <table>
+    <thead><tr><th>狀況</th><th>在哪裡</th><th>結果</th></tr></thead>
+    <tbody>
+      <tr><td>熱熱 worker 被砍</td><td>另一台本來就在做；重啟後 <code>HotHotWorker</code> 讀檢查點補讀</td><td>不中斷、不漏；重送的結果被下游當成重複</td></tr>
+      <tr><td>兩台算出不同的結果</td><td><code>ResultStore.Record()</code></td><td>409 衝突，保留第一份並計數</td></tr>
+      <tr><td>指派的 worker 被砍或斷線</td><td><code>TaskQueue</code> 的租約到期（<code>LeaseReaper</code> 每 0.1 秒檢查）</td><td>任務放回佇列最前面，attempt 加 1，改派</td></tr>
+      <tr><td>指派的 worker 被凍結後恢復</td><td><code>DispatchWorker.StillHolds()</code></td><td>租約過期就放棄，不寫結果</td></tr>
+      <tr><td>指派的 worker 連不到下游</td><td><code>DispatchWorker.DeliverAsync()</code></td><td>超過一個租約就放手；心跳停止，租約到期後改派</td></tr>
+      <tr><td>上游重啟、事件從頭編號</td><td><code>HotHotWorker.ExecuteAsync()</code></td><td>發現上游比自己的進度短就停下來報錯，不送錯的結果</td></tr>
+      <tr><td>舊的 attempt 比新的晚到下游</td><td><code>ResultStore.Record()</code></td><td>409 過期</td></tr>
+      <tr><td>完成回報時租約已經不是自己的</td><td><code>TaskQueue.Complete()</code></td><td>409，記成過期的完成回報</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="startup">
+  <h2>4. 啟動時發生什麼</h2>
+  <div class="cols">
+    <div class="card wit">
+      <h3>Witness</h3>
+      <p><code>src/Witness/Program.cs</code>：<code>WitnessConfig.FromEnvironment()</code> 讀 <code>PORT</code>、<code>DATA_DIR</code>、<code>NODES</code>、<code>LEASE_TTL_MS</code> → <code>AddWitness()</code> 註冊 <code>LeaseTable</code>。<code>LeaseTable</code> 從 <code>witness.json</code> 讀回上次的狀態；如果之前有人持有租約，就當作它還持有一個完整的 TTL，因為重啟期間那台可能還在服務。</p>
+    </div>
+    <div class="card nd">
+      <h3>Node</h3>
+      <p><code>src/Node/Program.cs</code>：<code>NodeConfig.FromEnvironment()</code>（設定互相矛盾會直接啟動失敗，例如租約短於 3 次續約）→ <code>AddNode()</code>：開啟 <code>log.jsonl</code>（最後一行寫到一半就丟掉）、建立 <code>NodeState</code>（從 <code>epoch.json</code> 讀回 epoch），啟動 <code>ElectionWorker</code> 和 <code>ReplicationWorker</code>。一律以備機身分啟動，先等一個 TTL 才可能去搶主。</p>
+    </div>
+    <div class="card gw">
+      <h3>Gateway</h3>
+      <p><code>src/Gateway/Program.cs</code>：<code>GatewayConfig.FromEnvironment()</code> 讀 <code>PORT</code>、<code>NODE_URLS</code>、<code>POLL_INTERVAL_MS</code> → <code>AddGateway()</code> 註冊 YARP 和 <code>PrimaryTracker</code>（背景服務）→ <code>MapGateway()</code>。剛啟動還沒輪詢到主機時，所有請求回 503。</p>
+    </div>
+    <div class="card gw">
+      <h3>Upstream</h3>
+      <p><code>src/Upstream/Program.cs</code>：<code>UpstreamConfig.FromEnvironment()</code> 讀 <code>PORT</code>、<code>TASK_LEASE_TTL_MS</code> → <code>AddUpstream()</code> 註冊 <code>EventLog</code>、<code>TaskQueue</code> 和背景的 <code>LeaseReaper</code>。資料只在記憶體。</p>
+    </div>
+    <div class="card work">
+      <h3>Worker</h3>
+      <p><code>src/Worker/Program.cs</code>：<code>WorkerConfig.FromEnvironment()</code> 讀 <code>MODE</code> 等設定 → <code>AddWorker()</code> 依模式只註冊 <code>HotHotWorker</code> 或 <code>DispatchWorker</code> 其中一個背景服務。熱熱模式啟動時讀回 <code>checkpoint.json</code>；<code>START_FROM=latest</code> 時改成跳到上游最新的事件。</p>
+    </div>
+    <div class="card wit">
+      <h3>Sink</h3>
+      <p><code>src/Sink/Program.cs</code>：讀 <code>PORT</code> → <code>AddSink()</code> 註冊 <code>ResultStore</code>。資料只在記憶體。</p>
+    </div>
+  </div>
+  <p>「重啟後先等一個 TTL」很關鍵：備機重啟前可能剛承諾過主機「3 秒內不搶」，重啟後記憶體裡的承諾不見了，所以把啟動當成「剛聽到主機」來處理。</p>
+<pre><span class="c">// src/Node/Cluster/NodeState.cs 的建構子</span>
+_lastHeardFromPrimary = Clock.Now;
+
+public bool TryBeginCandidacy()
+{
+    lock (_gate)
+    {
+        if (_term is not null || _candidate || Clock.Now - _lastHeardFromPrimary &lt; _config.LeaseTtl + _config.ElectionDelay)
+        {
+            return false;
+        }
+        _candidate = true;
+        return true;
+    }
+}</pre>
+</section>
+
+<section id="design">
+  <h2>5. 關鍵設計</h2>
+
+  <h3>witness 只在三種情況下換主機</h3>
+  <p>現任主機續約永遠成功；別人要拿租約，必須「租約已到期」而且「自己是同步中的備機」。換手時 epoch 加 1，成為 fencing token。</p>
+<pre><span class="c">// src/Witness/LeaseTable.cs</span>
+public LeaseReply Acquire(string? node)
+{
+    RequireKnown(node);
+    lock (_gate)
+    {
+        var now = _clock.Now;
+        if (_state.Holder == node)
+        {
+            <span class="c">// Also after expiry: nobody else took over in between, so the holder still has the newest data.</span>
+            _expiresAt = now + _config.LeaseTtl;
+            return Reply(granted: true, reason: null);
+        }
+        if (_state.Holder is not null &amp;&amp; now &lt; _expiresAt)
+        {
+            return Reply(granted: false, $"lease held by {_state.Holder}");
+        }
+        if (_state.Holder is not null &amp;&amp; !_state.StandbyInSync)
+        {
+            return Reply(granted: false, $"{node} may be missing acknowledged writes; waiting for {_state.Holder} to return");
+        }
+        <span class="c">// …… 換手：epoch + 1，新的備機（舊主機）先標成不同步</span>
+    }
+}</pre>
+
+  <h3>其他</h3>
+  <table>
+    <thead><tr><th>設計</th><th>為什麼</th><th>在哪裡</th></tr></thead>
+    <tbody>
+      <tr><td>兩種租約：witness 的，和備機的承諾</td><td>只要拿到 3 票中的 2 票就能服務，witness 單獨掛掉或備機單獨掛掉都不會停</td><td><code>NodeState.LeaseUntilLocked()</code>、<code>ExtendPeerLease()</code></td></tr>
+      <tr><td>備機在向 witness 要租約時拒絕所有複寫</td><td>否則它可能一邊被 witness 授權，一邊又承諾舊主機「不搶主」，兩台會同時有權服務</td><td><code>NodeState.HandleReplicate()</code> 的 <code>_candidate</code></td></tr>
+      <tr><td>witness 的同步狀態帶版本號</td><td>逾時放棄的 HTTP 請求還是可能晚到。「備機同步中」必須附上最新版本才會被接受，晚到的舊訊息蓋不掉後來的「備機不同步」</td><td><code>LeaseTable.SetStandbyInSync()</code>、<code>PrimaryTerm.TryMarkInSyncAsync()</code></td></tr>
+      <tr><td>對 witness 的呼叫一次只送一個</td><td>同一個任期內的兩個報告不會互相超車</td><td><code>PrimaryTerm</code> 的 <code>_witnessCalls</code></td></tr>
+      <tr><td>Raft 式 log 比對</td><td>用 (index, epoch) 認出分歧的資料；只截掉比目前主機舊的 epoch，所以晚到的舊心跳不會誤刪新資料</td><td><code>ReplicatedLog.AppendFrom()</code></td></tr>
+      <tr><td>讀取也等到安全才回</td><td>不讓 client 看到「切換後會消失」的值</td><td><code>KvService.GetAsync()</code></td></tr>
+      <tr><td>單調時鐘</td><td>租約不會因為系統時間被調整而變長或變短</td><td><code>src/Shared/MonotonicClock.cs</code></td></tr>
+      <tr><td>沒有 witness 的對照組</td><td>同一份程式，<code>ARBITER=none</code> 時備機 3 秒沒聽到主機就自己升格，用來實測腦裂的代價</td><td><code>ElectionWorker.TickWithoutWitness()</code>、<code>NoArbiter</code></td></tr>
+      <tr><td>B：先送結果、再存檢查點</td><td>被砍時最多重送一批，絕不會跳過；重送的部分由下游去重</td><td><code>HotHotWorker.ExecuteAsync()</code></td></tr>
+      <tr><td>B：處理是決定性的</td><td>結果只依事件和順序計算，兩台才會逐字相同；<code>DETERMINISTIC=false</code> 是反例</td><td><code>Ledger.Apply()</code>、<code>HotHotWorker.Format()</code></td></tr>
+      <tr><td>C：worker 自己算租約</td><td>跟架構 A 的主機一樣，從送出請求的時間起算、提早 10% 結束，所以一定比上游先放手</td><td><code>LeaseTracker</code></td></tr>
+      <tr><td>C：改派的任務排最前面</td><td>它已經等最久了</td><td><code>TaskQueue.ExpireLocked()</code></td></tr>
+      <tr><td>C：心跳固定間隔、每次有上限</td><td>一次卡住的心跳不會把下一次推到租約之後</td><td><code>DispatchWorker.HeartbeatAsync()</code></td></tr>
+      <tr><td>C：做不完就放手</td><td>心跳只證明活著，不證明做得完；連不到下游還一直心跳，任務會卡住</td><td><code>DispatchWorker.DeliverAsync()</code></td></tr>
+      <tr><td>B、C：下游以編號去重</td><td>重複無法完全避免（at-least-once），只能讓它無害；內容不同的重複當成衝突記下來</td><td><code>ResultStore.Record()</code></td></tr>
+    </tbody>
+  </table>
+  <p class="note">還沒處理：斷電（log 只寫進作業系統，沒有 fsync）、gateway 本身的備援、各程序之間的身分驗證。複寫一次只送一批，所以同步寫入要 1 到 2 個網路來回。</p>
+</section>
+
+<section id="run">
+  <h2>6. 怎麼跑</h2>
+<pre><span class="c"># 在 dotnet/ 底下</span>
+./run.sh build                     <span class="c"># dotnet build -c Release</span>
+./run.sh test                      <span class="c"># 單元＋整合測試（含同一程序內跑整個叢集）</span>
+
+<span class="c"># 手動啟動（四個終端機）</span>
+PORT=8103 ./run.sh witness
+PORT=8101 NODE_ID=a PEER_URL=http://127.0.0.1:8102 ./run.sh node
+PORT=8102 NODE_ID=b PEER_URL=http://127.0.0.1:8101 ./run.sh node
+PORT=8100 ./run.sh gateway
+
+<span class="c"># 打打看：約 3 秒後選出主機</span>
+curl -s http://127.0.0.1:8100/health
+curl -i -X PUT http://127.0.0.1:8100/kv/order-1 -H 'Content-Type: application/json' -d '{"value":"paid"}'
+curl -s http://127.0.0.1:8101/health; curl -s http://127.0.0.1:8102/health
+<span class="c"># 砍掉主機那個終端機（Ctrl+C），約 3 秒後再寫一次，會由另一台回應</span>
+
+<span class="c"># 架構 B：熱熱備援（四個終端機）</span>
+PORT=8120 ./run.sh upstream
+PORT=8123 ./run.sh sink
+PORT=8121 WORKER_ID=a ./run.sh worker
+PORT=8122 WORKER_ID=b ./run.sh worker
+curl -s -X POST http://127.0.0.1:8120/events -H 'Content-Type: application/json' -d '{"account":"acct-1","amount":10}'
+curl -s http://127.0.0.1:8123/results       <span class="c"># 每個事件收到兩份，套用一份</span>
+<span class="c"># 架構 C：worker 改用 MODE=dispatch 啟動，再送任務</span>
+curl -s -X POST http://127.0.0.1:8120/tasks -H 'Content-Type: application/json' -d '{"input":12}'
+
+<span class="c"># 全部故障情境的自動驗證（在 PoC 根目錄）</span>
+../verify/run.sh dotnet
+../verify/run.sh dotnet --family independent   <span class="c"># 只跑架構 B、C</span></pre>
+
+  <table>
+    <thead><tr><th>環境變數</th><th>用在</th><th>預設</th><th>說明</th></tr></thead>
+    <tbody>
+      <tr><td><code>PORT</code></td><td>全部</td><td>8100 / 8101 / 8103；8120 / 8121 / 8123</td><td>只綁 127.0.0.1</td></tr>
+      <tr><td><code>NODE_ID</code></td><td>Node</td><td><code>a</code></td><td>小寫英數與 <code>-</code></td></tr>
+      <tr><td><code>PEER_URL</code>、<code>WITNESS_URL</code></td><td>Node</td><td><code>http://127.0.0.1:8102</code>、<code>:8103</code></td><td>另一台節點和 witness 的位址</td></tr>
+      <tr><td><code>DATA_DIR</code></td><td>Node、Witness</td><td><code>data/&lt;NODE_ID&gt;</code>、<code>data/witness</code></td><td>log、epoch、witness 狀態檔放這裡</td></tr>
+      <tr><td><code>ARBITER</code></td><td>Node</td><td><code>witness</code></td><td><code>none</code>：沒有 witness 的對照組</td></tr>
+      <tr><td><code>REPLICATION</code></td><td>Node</td><td><code>sync</code></td><td><code>async</code>：寫進本機就回 200</td></tr>
+      <tr><td><code>LEASE_TTL_MS</code></td><td>Node、Witness</td><td>3000</td><td>租約長度，兩邊要設一樣</td></tr>
+      <tr><td><code>RENEW_INTERVAL_MS</code></td><td>Node</td><td>500</td><td>續約和心跳間隔，也是每次呼叫的逾時</td></tr>
+      <tr><td><code>REPLICATION_TIMEOUT_MS</code></td><td>Node</td><td>1000</td><td>同步寫入等備機多久才改問 witness</td></tr>
+      <tr><td><code>ELECTION_DELAY_MS</code></td><td>Node</td><td>0</td><td>搶主前多等一下（只在沒有 witness 時有用）</td></tr>
+      <tr><td><code>NODES</code></td><td>Witness</td><td><code>a,b</code></td><td>允許持有租約的兩個節點</td></tr>
+      <tr><td><code>NODE_URLS</code>、<code>POLL_INTERVAL_MS</code></td><td>Gateway</td><td><code>a=http://127.0.0.1:8101,b=…:8102</code>、100</td><td>要輪詢的節點與間隔</td></tr>
+      <tr><td><code>TASK_LEASE_TTL_MS</code></td><td>Upstream</td><td>2000</td><td>任務租約長度</td></tr>
+      <tr><td><code>WORKER_ID</code>、<code>MODE</code></td><td>Worker</td><td><code>a</code>、<code>hothot</code></td><td><code>dispatch</code> 是架構 C</td></tr>
+      <tr><td><code>UPSTREAM_URL</code>、<code>SINK_URL</code></td><td>Worker</td><td><code>http://127.0.0.1:8120</code>、<code>:8123</code></td><td>上游和下游的位址</td></tr>
+      <tr><td><code>START_FROM</code></td><td>Worker</td><td><code>checkpoint</code></td><td><code>latest</code>：對照組，重啟時跳過停機期間的事件</td></tr>
+      <tr><td><code>DETERMINISTIC</code></td><td>Worker</td><td><code>true</code></td><td><code>false</code>：對照組，結果帶本機時鐘</td></tr>
+      <tr><td><code>LEASE_CHECK</code></td><td>Worker</td><td><code>on</code></td><td><code>off</code>：對照組，寫結果前不檢查租約</td></tr>
+      <tr><td><code>WORK_MS</code>、<code>RPC_TIMEOUT_MS</code></td><td>Worker</td><td>300、1000</td><td>每件任務做多久；每次呼叫上游或下游的逾時</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  完整的實驗設計、三種語言和三種架構的比較與結論，請看 <a href="../README.md">PoC 的 README</a>。同樣的說明也有 <a href="../rust/how-it-works.html">Rust 版</a> 和 <a href="../python/how-it-works.html">Python 版</a>（目前只有架構 A）。
+</footer>
+
+</main>
+<script>
+  const SCENARIOS = {
+    normal: {
+      on: ["client", "gw-a", "a-b", "a-w"], fail: [], dim: [], down: [], primary: ["a"],
+      roles: { a: "主機 · epoch 1", b: "備機 · 同步中", w: "租約：a · b 可接手" },
+    },
+    crash: {
+      on: ["client", "gw-b", "b-w"], fail: ["gw-a", "b-a"], dim: [], down: ["a"], primary: ["b"],
+      roles: { a: "✕ 停機", b: "主機 · epoch 2 · 單獨確認", w: "租約：b · a 不可接手" },
+    },
+    failback: {
+      on: ["client", "gw-b", "b-a", "b-w"], fail: [], dim: [], down: [], primary: ["b"],
+      roles: { a: "備機 · 丟掉未確認的 → 追上", b: "主機 · epoch 2", w: "租約：b · a 可接手" },
+    },
+    partition: {
+      on: ["client", "gw-b", "b-w"], fail: ["gw-a", "a-b", "b-a", "a-w"], dim: [], down: [], primary: ["b"],
+      roles: { a: "租約到期 · 拒絕寫入（503）", b: "主機 · epoch 2", w: "租約：b" },
+    },
+    splitbrain: {
+      on: ["client", "gw-a", "gw-b"], fail: ["a-b", "b-a"], dim: ["w", "a-w", "b-w"], down: [], primary: ["a", "b"],
+      roles: { a: "主機 · epoch 1（自以為）", b: "主機 · epoch 2", w: "沒有使用" },
+    },
+    witness: {
+      on: ["client", "gw-a", "a-b"], fail: ["a-w"], dim: [], down: ["w"], primary: ["a"],
+      roles: { a: "主機 · 靠 b 的承諾續約", b: "備機 · 同步中", w: "✕ 停機" },
+    },
+    stale: {
+      on: ["client"], fail: ["gw-a", "gw-b", "b-w"], dim: [], down: ["a"], primary: [],
+      roles: { a: "✕ 停機（有 1,572 筆 b 沒有）", b: "備機 · 被拒絕接手", w: "租約：a · b 不可接手" },
+    },
+  };
+
+  const WORK = {
+    "hh-normal": {
+      on: ["producer", "up-a", "up-b", "a-sink", "b-sink"], fail: [], dim: [], down: [], primary: [],
+      roles: { up: "事件流水帳", a: "讀全部事件 · 算餘額", b: "讀全部事件 · 算餘額", sink: "每筆 2 份 · 套用 1 份" },
+    },
+    "hh-crash": {
+      on: ["producer", "up-b", "b-sink"], fail: ["up-a", "a-sink"], dim: [], down: ["a"], primary: [],
+      roles: { up: "事件流水帳", a: "✕ 停機", b: "照常處理 · 不用切換", sink: "最長 24 ms 沒有新結果" },
+    },
+    "hh-replay": {
+      on: ["producer", "up-a", "up-b", "a-sink", "b-sink"], fail: [], dim: [], down: [], primary: [],
+      roles: { up: "從 a 的檢查點重讀", a: "補讀約 600 筆（0.47 秒）", b: "照常處理", sink: "重送的部分當重複" },
+    },
+    "hh-skip": {
+      on: ["producer", "up-a", "up-b", "b-sink"], fail: ["a-sink"], dim: [], down: [], primary: [],
+      roles: { up: "a 跳到最新的事件", a: "少了停機期間 · 餘額錯", b: "照常處理", sink: "不一致 473 筆" },
+    },
+    "d-normal": {
+      on: ["producer", "up-a", "up-b", "a-sink", "b-sink"], fail: [], dim: [], down: [], primary: [],
+      roles: { up: "任務佇列 · 每件租給一台", a: "做任務 12（attempt 1）", b: "做任務 13（attempt 1）", sink: "以任務編號去重" },
+    },
+    "d-crash": {
+      on: ["producer", "up-b", "b-sink"], fail: ["up-a"], dim: [], down: ["a"], primary: [],
+      roles: { up: "12 的租約到期 → 改派", a: "✕ 停機（手上是 12）", b: "接手 12（attempt 2）", sink: "12 晚 2.34 秒完成" },
+    },
+    "d-pause": {
+      on: ["producer", "up-b", "b-sink"], fail: [], dim: ["a-sink"], down: ["a"], primary: [],
+      roles: { up: "12 的租約到期 → 改派", a: "凍結 4 秒 → 恢復後放棄 12", b: "接手 12（attempt 2）", sink: "0 份晚到的結果" },
+    },
+    "d-sinkcut": {
+      on: ["producer", "up-a", "up-b", "b-sink"], fail: ["a-sink"], dim: [], down: [], primary: [],
+      roles: { up: "a 停止心跳後改派 12", a: "寫不出 12 → 2 秒後放手", b: "接手 12（attempt 2）", sink: "12 晚 4.48 秒完成" },
+    },
+    "d-acklost": {
+      on: ["producer", "up-b", "a-sink", "b-sink"], fail: ["up-a"], dim: [], down: [], primary: [],
+      roles: { up: "收不到 12 的回報 → 改派", a: "12 寫了 · 回報不出去", b: "再做一次 12", sink: "12 收到 2 份 · 套用 1 份" },
+    },
+  };
+
+  const DIAGRAMS = { replication: SCENARIOS, work: WORK };
+
+  function showScenario(diagram, id) {
+    const root = document.querySelector(`[data-diagram="${diagram}"]`);
+    const s = DIAGRAMS[diagram][id];
+    root.querySelectorAll("[data-edge]").forEach((edge) => {
+      edge.classList.toggle("on", s.on.includes(edge.dataset.edge));
+      edge.classList.toggle("fail", s.fail.includes(edge.dataset.edge));
+      edge.style.opacity = s.dim.includes(edge.dataset.edge) ? ".15" : "";
+    });
+    root.querySelectorAll("[data-node]").forEach((node) => {
+      node.classList.toggle("dim", s.dim.includes(node.dataset.node));
+      node.classList.toggle("down", s.down.includes(node.dataset.node));
+      node.classList.toggle("primary", s.primary.includes(node.dataset.node));
+    });
+    root.querySelectorAll("[data-role]").forEach((label) => { label.textContent = s.roles[label.dataset.role]; });
+    root.querySelectorAll("[data-panel]").forEach((panel) => { panel.hidden = panel.dataset.panel !== id; });
+    root.querySelectorAll("[data-phase-btn]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.phaseBtn === id));
+    });
+  }
+
+  document.querySelectorAll("[data-diagram]").forEach((root) => {
+    const diagram = root.dataset.diagram;
+    const buttons = root.querySelectorAll("[data-phase-btn]");
+    buttons.forEach((button) => button.addEventListener("click", () => showScenario(diagram, button.dataset.phaseBtn)));
+    showScenario(diagram, buttons[0].dataset.phaseBtn);
+  });
+</script>
+</body>
+</html>

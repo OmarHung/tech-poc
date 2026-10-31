@@ -1,0 +1,16 @@
+{
+  "impl": "python",
+  "scenario": "crash-fast",
+  "title": "Primary killed, sync, 1 s lease",
+  "passed": 3,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 3309,
+    "rto_s": 1.179,
+    "lost_acked_writes": 0,
+    "lost_window_ms": 0,
+    "write_p50_ms": 3.62,
+    "write_p99_ms": 6.07,
+    "rejoin_discarded_entries": 0
+  }
+}

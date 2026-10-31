@@ -1,0 +1,16 @@
+{
+  "impl": "rust",
+  "scenario": "crash-async-slow",
+  "title": "Primary killed, async, 10 ms between the nodes",
+  "passed": 3,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 4114,
+    "rto_s": 3.489,
+    "lost_acked_writes": 12,
+    "lost_window_ms": 19.9,
+    "write_p50_ms": 0.73,
+    "write_p99_ms": 2.68,
+    "rejoin_discarded_entries": 12
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "impl": "dotnet",
+  "scenario": "crash",
+  "title": "Primary killed, then rejoins and takes over again (sync)",
+  "passed": 8,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 4065,
+    "write_p50_ms": 0.94,
+    "write_p99_ms": 2.03,
+    "rto_s": 3.289,
+    "longest_write_gap_s": 3.289,
+    "lost_acked_writes": 0,
+    "rejoin_catch_up_s": 0.394,
+    "rejoin_catch_up_after_ready_s": 0.06,
+    "rejoin_discarded_entries": 0,
+    "second_rto_s": 3.491,
+    "acked_writes_total": 6598
+  }
+}

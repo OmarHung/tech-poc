@@ -1,0 +1,15 @@
+{
+  "impl": "dotnet",
+  "scenario": "late-messages",
+  "title": "Primary's links slower than its timeouts while the standby restarts; then primary killed",
+  "passed": 2,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 1962,
+    "failed_writes": 13835,
+    "standby_took_over": false,
+    "rto_s": null,
+    "lost_acked_writes": 0,
+    "acks_while_both_primary": 0
+  }
+}

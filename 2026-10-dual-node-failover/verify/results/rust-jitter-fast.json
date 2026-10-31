@@ -1,0 +1,18 @@
+{
+  "impl": "rust",
+  "scenario": "jitter-fast",
+  "title": "Same flapping with a 1 s lease",
+  "passed": 4,
+  "failures": [],
+  "metrics": {
+    "blackouts": 3,
+    "longest_blackout_s": 1.16,
+    "slow_periods": 5,
+    "writes_during_storm": 6386,
+    "failed_writes_during_storm": 59,
+    "write_p99_ms_during_storm": 129.3,
+    "failovers": 1,
+    "lost_acked_writes": 0,
+    "acks_while_both_primary": 0
+  }
+}

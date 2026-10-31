@@ -1,0 +1,23 @@
+{
+  "impl": "dotnet",
+  "scenario": "dispatch-ack-lost",
+  "title": "Dispatch: a finishes a task but cannot report it",
+  "passed": 4,
+  "failures": [],
+  "metrics": {
+    "produced": 54,
+    "applied": 54,
+    "received": 55,
+    "extra_copies": 1,
+    "conflicts": 0,
+    "stale": 0,
+    "missing": 0,
+    "wrong": 0,
+    "latency_p50_ms": 1184,
+    "latency_p99_ms": 2116,
+    "latency_max_ms": 2116,
+    "longest_output_gap_ms": 612,
+    "reassignments": 1,
+    "stale_completions": 1
+  }
+}

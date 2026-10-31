@@ -1,0 +1,16 @@
+{
+  "impl": "rust",
+  "scenario": "partition",
+  "title": "Primary isolated from standby and witness",
+  "passed": 5,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 4621,
+    "rto_s": 3.033,
+    "old_primary_acks_after_cut": 0,
+    "acks_while_both_primary": 0,
+    "lost_acked_writes": 0,
+    "heal_to_converged_s": 0.2,
+    "rejoin_discarded_entries": 8
+  }
+}

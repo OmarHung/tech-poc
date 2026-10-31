@@ -1,0 +1,13 @@
+{
+  "impl": "rust",
+  "scenario": "witness-down",
+  "title": "Witness killed for 6s, then restarted",
+  "passed": 5,
+  "failures": [],
+  "metrics": {
+    "witness_down_s": 6.01,
+    "acked_writes": 5099,
+    "failed_writes_after_witness_died": 0,
+    "longest_write_gap_s": 0.018
+  }
+}

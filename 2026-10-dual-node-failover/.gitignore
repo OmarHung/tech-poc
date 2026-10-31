@@ -1,0 +1,11 @@
+# build output
+dotnet/**/bin/
+dotnet/**/obj/
+dotnet/**/TestResults/
+dotnet/data/
+
+# python
+__pycache__/
+
+# verify run logs (results/ is kept as evidence for the README numbers)
+verify/logs/

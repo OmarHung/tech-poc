@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Python 版運作說明｜雙機備援機制</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --fg: #1d232b; --muted: #5d6773; --line: #d8dde3; --card: #ffffff; --code-bg: #f0f2f5;
+    --flow: #2563eb; --flow-ink: #ffffff; --fail: #d64545; --idle: #b9c0c8;
+    --gw: #6d5bd0; --node: #0f8b8d; --wit: #b86e0b; --warn-bg: #fff4dc; --warn-fg: #8a5300;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a; --fg: #e4e7eb; --muted: #9aa4b0; --line: #2d333b; --card: #1a1f26; --code-bg: #20262e;
+      --flow: #6ea0ff; --flow-ink: #0b1220; --fail: #ff7272; --idle: #4a525c;
+      --gw: #a596ff; --node: #4cc7c9; --wit: #f0a948; --warn-bg: #3a2c12; --warn-fg: #f5c46b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); line-height: 1.7;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 1.9rem; line-height: 1.3; margin: 0 0 8px; }
+  h2 { font-size: 1.35rem; margin: 56px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 20px 0 8px; }
+  p { margin: 8px 0; }
+  a { color: var(--flow); }
+  .lead { color: var(--muted); font-size: 1.05rem; margin: 0; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 0; }
+  nav.toc a { text-decoration: none; font-size: .9rem; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--fg); background: var(--card); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .86em; }
+  :not(pre) > code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; line-height: 1.55; margin: 10px 0; }
+  pre .c { color: var(--muted); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 16px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; border-top: 4px solid var(--c, var(--line)); }
+  .card h3 { margin: 0 0 4px; }
+  .card .port { color: var(--muted); font-size: .85rem; }
+  .card p { font-size: .93rem; }
+  .gw { --c: var(--gw); } .nd { --c: var(--node); } .wit { --c: var(--wit); }
+  .tree { background: var(--card); border: 1px solid var(--line); }
+  .note { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; padding: 10px 14px; font-size: .93rem; margin: 12px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: .92rem; background: var(--card); }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+  th { background: var(--code-bg); font-weight: 600; }
+
+  /* interactive flow */
+  .phase-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .phase-buttons button {
+    font: inherit; font-size: .92rem; cursor: pointer; padding: 6px 14px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--card); color: var(--fg);
+  }
+  .phase-buttons button:hover { border-color: var(--flow); }
+  .phase-buttons button:focus-visible { outline: 3px solid var(--flow); outline-offset: 2px; }
+  .phase-buttons button[aria-pressed="true"] { background: var(--flow); border-color: var(--flow); color: var(--flow-ink); font-weight: 600; }
+  .flow-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  #flow { width: 100%; height: auto; display: block; }
+  #flow text { fill: var(--fg); font-size: 13px; text-anchor: middle; }
+  #flow text.small { font-size: 11px; fill: var(--muted); }
+  #flow text.role { font-size: 12px; font-weight: 600; fill: var(--warn-fg); }
+  #flow text.edge-label { font-size: 10.5px; fill: var(--muted); }
+  #flow .node rect { fill: var(--card); stroke: var(--c); stroke-width: 2; rx: 8; }
+  #flow .node.gw { --c: var(--gw); } #flow .node.nd { --c: var(--node); } #flow .node.wit { --c: var(--wit); } #flow .node.plain { --c: var(--idle); }
+  #flow .node.primary rect { stroke-width: 3.5; fill: var(--warn-bg); }
+  #flow .node.dim { opacity: .35; }
+  #flow .node.down rect { stroke: var(--fail); stroke-dasharray: 6 4; }
+  #flow path.edge { fill: none; stroke: var(--idle); stroke-width: 2; opacity: .45; marker-end: url(#arrow-idle); }
+  #flow path.edge.on { stroke: var(--flow); opacity: 1; stroke-width: 2.6; stroke-dasharray: 7 5; animation: dash 1s linear infinite; marker-end: url(#arrow-on); }
+  #flow path.edge.fail { stroke: var(--fail); opacity: 1; stroke-width: 2.6; stroke-dasharray: 3 5; marker-end: url(#arrow-fail); }
+  @keyframes dash { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { #flow path.edge.on { animation: none; } }
+  .panel { margin-top: 12px; }
+  .panel dl { display: grid; grid-template-columns: 7.5em 1fr; gap: 6px 14px; margin: 8px 0; }
+  .panel dt { color: var(--muted); }
+  .panel dd { margin: 0; }
+
+  /* step timeline */
+  ol.steps { list-style: none; padding: 0; margin: 16px 0; counter-reset: step; }
+  ol.steps > li { position: relative; padding: 0 0 18px 46px; counter-increment: step; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--c, var(--flow)); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: .9rem;
+  }
+  ol.steps > li::after { content: ""; position: absolute; left: 14px; top: 32px; bottom: 2px; width: 2px; background: var(--line); }
+  ol.steps > li:last-child::after { display: none; }
+  ol.steps .where { font-size: .85rem; color: var(--muted); }
+  ol.steps .who { font-weight: 600; }
+  details { margin: 6px 0; }
+  details summary { cursor: pointer; color: var(--flow); font-size: .9rem; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  footer { margin-top: 64px; color: var(--muted); font-size: .88rem; }
+</style>
+<body>
+<main>
+
+<header>
+  <h1>雙機備援機制｜Python 版運作說明</h1>
+  <p class="lead">這頁說明 <code>python/</code> 裡的程式怎麼運作：兩台資料節點怎麼決定誰是主機、一筆寫入怎麼複寫到另一台、各種故障時誰接手。框架是 FastAPI 0.162 跑在 uvicorn 0.54（uvloop、httptools）上，節點之間和 gateway 轉發都用 httpx 0.28，Python 3.12，套件由 uv 管理。規則、時間和 HTTP 介面跟 .NET 版一模一樣，用同一支 <code>verify/</code> 驗證。</p>
+  <nav class="toc" aria-label="目錄">
+    <a href="#overview">1. 全貌</a>
+    <a href="#flow-section">2. 互動流程圖</a>
+    <a href="#journey">3. 一筆寫入怎麼複寫到另一台</a>
+    <a href="#startup">4. 啟動時發生什麼</a>
+    <a href="#design">5. 關鍵設計</a>
+    <a href="#run">6. 怎麼跑</a>
+  </nav>
+</header>
+
+<section id="overview">
+  <h2>1. 全貌：三種程式、四個程序</h2>
+  <p>兩台資料節點跑的是同一個套件（<code>node</code>），誰當主機是執行時決定的。第三個程序 witness 不存資料，只負責仲裁。client 只認得 gateway。每個程序都是單一的 uvicorn 程序、單一個 asyncio event loop，背景迴圈（選主、複寫、gateway 輪詢）都是同一個 loop 上的 task。</p>
+  <div class="cards">
+    <div class="card gw">
+      <h3>Gateway</h3>
+      <div class="port">127.0.0.1:8100 ・ <code>src/gateway/</code></div>
+      <p>client 的唯一入口。每 100 ms 問兩台節點的 <code>/health</code>，把請求轉給回報 <code>role = primary</code> 的那台（兩台都說是主機時選 epoch 較新的）。</p>
+    </div>
+    <div class="card nd">
+      <h3>Node a / Node b</h3>
+      <div class="port">127.0.0.1:8101、8102 ・ <code>src/node/</code></div>
+      <p>資料節點。主機接受讀寫，並把每筆寫入同步複寫給備機；備機只接收複寫，同時注意主機是不是還活著。資料存在只能附加的 log 檔。</p>
+    </div>
+    <div class="card wit">
+      <h3>Witness</h3>
+      <div class="port">127.0.0.1:8103 ・ <code>src/witness/</code></div>
+      <p>第三票。一次只把租約（lease）發給一台，每換一次主機 epoch 就加 1；另外記住「備機是不是同步中」，不同步就不准它升格。只存四個欄位。</p>
+    </div>
+  </div>
+
+  <h3>資料夾結構</h3>
+<pre class="tree">python/
+├── pyproject.toml、uv.lock         uv 管理的相依套件；ruff（line-length 120）、pytest 設定
+├── run.sh                          ./run.sh build | test | node | witness | gateway（用 exec 啟動 uvicorn）
+├── src/shared/                     三個程式共用
+│   ├── wire.py                     嚴格 JSON：數字不收字串、型別錯就回 JSON 路徑；node id 規則
+│   ├── http.py                     X-Served-By、錯誤一律 {"error": ...}、read_body()
+│   ├── env.py、errors.py           環境變數讀取（錯誤訊息點名變數）、對應 HTTP 狀態碼的例外
+│   ├── clock.py、state_file.py     time.monotonic() 時鐘、原子寫入的 JSON 狀態檔
+│   ├── tasks.py                    背景 task：失敗一定記錄；常駐迴圈掛掉就整個程序停下
+│   └── witness_contracts.py        witness API 的請求與回覆
+├── src/witness/
+│   ├── lease_table.py              發租約、換主機時加 epoch、記錄並檢查「備機同步中」
+│   └── main.py                     create_app()：POST /lease、POST /sync、GET /health
+├── src/node/
+│   ├── config.py                   ARBITER、REPLICATION、LEASE_TTL_MS 等設定與檢查
+│   ├── main.py                     NodeRuntime 與 create_app()：/kv、/health、/internal/replicate、/admin/data
+│   ├── kv.py                       client 的讀寫：只有主機能處理，同步模式下要等到安全才回覆
+│   ├── cluster/
+│   │   ├── node_state.py           角色、epoch、兩種租約；備機接收複寫的規則
+│   │   ├── primary_term.py         一段主機任期：寫入何時能回 200、備機的同步狀態
+│   │   ├── election.py             每 0.5 秒：續約、搶主、租約到期就下台
+│   │   ├── replication.py          主機把 log 一批批送給備機，閒置時送心跳
+│   │   ├── rpc.py、witness_client.py   呼叫備機和 witness（整個呼叫逾時 0.5 秒）
+│   │   └── contracts.py            /internal/replicate 的請求與回覆
+│   └── storage/
+│       ├── replicated_log.py       log 本體＋key-value 檢視；Raft 式比對與截斷
+│       └── log_file.py             JSON lines 檔，每次附加都用 os.write 交給作業系統才回傳；寫失敗就截回上一行
+├── src/gateway/
+│   ├── tracker.py                  輪詢兩台的 /health，記住目前的主機
+│   └── main.py                     create_app()：轉發；沒有主機時回 503
+└── tests/                          pytest：單元測試、ASGI 層級的 HTTP 測試、同一程序內跑整個叢集的測試</pre>
+</section>
+
+<section id="flow-section">
+  <h2>2. 互動流程圖：正常、故障與恢復</h2>
+  <p>點按鈕切換情境。藍色虛線是正在發生的流量，紅色是失敗的連線，半透明是這個情境沒用到的部分；外框加粗、底色是主機。下方的數字來自 <code>verify/</code> 對 Python 版的實測（<code>verify/results/python-*.json</code>）。</p>
+  <div class="phase-buttons" role="group" aria-label="選擇情境">
+    <button type="button" data-phase-btn="normal" aria-pressed="true">正常運作</button>
+    <button type="button" data-phase-btn="crash" aria-pressed="false">主機崩潰</button>
+    <button type="button" data-phase-btn="failback" aria-pressed="false">舊主機加回來</button>
+    <button type="button" data-phase-btn="partition" aria-pressed="false">網路分區（有 witness）</button>
+    <button type="button" data-phase-btn="splitbrain" aria-pressed="false">網路分區（沒有 witness）</button>
+    <button type="button" data-phase-btn="witness" aria-pressed="false">witness 掛掉</button>
+    <button type="button" data-phase-btn="stale" aria-pressed="false">備機落後時主機又掛</button>
+  </div>
+
+  <div class="flow-wrap">
+    <svg id="flow" viewBox="0 0 960 420" role="img" aria-labelledby="flow-title flow-desc">
+      <title id="flow-title">雙機備援流程圖</title>
+      <desc id="flow-desc">client 經過 gateway 連到 node a 或 node b。兩台節點之間互相複寫，兩台都可以向 witness 取得租約。</desc>
+      <defs>
+        <marker id="arrow-idle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--idle)"/></marker>
+        <marker id="arrow-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--flow)"/></marker>
+        <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--fail)"/></marker>
+      </defs>
+
+      <g class="node plain" data-node="client"><rect x="16" y="182" width="100" height="56"/><text x="66" y="215">client</text></g>
+      <g class="node gw" data-node="gw">
+        <rect x="160" y="165" width="150" height="90"/>
+        <text x="235" y="197">Gateway</text><text class="small" x="235" y="216">:8100</text><text class="small" x="235" y="236">轉給 role=primary</text>
+      </g>
+      <g class="node nd" data-node="a">
+        <rect x="400" y="30" width="230" height="120"/>
+        <text x="515" y="62">Node a</text><text class="small" x="515" y="82">:8101</text>
+        <text class="role" x="515" y="112" data-role="a"></text>
+      </g>
+      <g class="node nd" data-node="b">
+        <rect x="400" y="270" width="230" height="120"/>
+        <text x="515" y="302">Node b</text><text class="small" x="515" y="322">:8102</text>
+        <text class="role" x="515" y="352" data-role="b"></text>
+      </g>
+      <g class="node wit" data-node="w">
+        <rect x="740" y="150" width="200" height="120"/>
+        <text x="840" y="182">Witness</text><text class="small" x="840" y="201">:8103</text>
+        <text class="role" x="840" y="232" data-role="w"></text>
+      </g>
+
+      <!-- edges are drawn after the boxes so the box fills never hide them -->
+      <path class="edge" data-edge="client" d="M116 210 H158"/>
+      <path class="edge" data-edge="gw-a" d="M310 195 C 355 195, 355 95, 398 95"/>
+      <path class="edge" data-edge="gw-b" d="M310 225 C 355 225, 355 325, 398 325"/>
+      <path class="edge" data-edge="a-b" d="M495 150 V268"/>
+      <path class="edge" data-edge="b-a" d="M535 270 V152"/>
+      <text class="edge-label" x="582" y="214">複寫／心跳</text>
+      <path class="edge" data-edge="a-w" d="M630 90 C 690 90, 700 170, 738 180"/>
+      <path class="edge" data-edge="b-w" d="M630 330 C 690 330, 700 250, 738 240"/>
+      <text class="edge-label" x="700" y="122">租約</text>
+      <text class="edge-label" x="700" y="304">租約</text>
+    </svg>
+
+    <div class="panel" data-panel="normal">
+      <h3>正常運作：a 是主機</h3>
+      <dl>
+        <dt>選主</dt><dd>a 每 0.5 秒向 witness 續約一次（<code>ElectionWorker._renew()</code>），租約 3 秒。b 一直收到 a 的複寫和心跳，所以不會去搶。</dd>
+        <dt>寫入</dt><dd>client → gateway → a。a 寫進自己的 log，再送給 b；b 回覆收到後，a 才回 200 給 client。</dd>
+        <dt>witness 記錄</dt><dd>租約在 a，epoch 1，備機同步中（b 可以接手）。</dd>
+        <dt>實測</dt><dd>本機寫入 p50 3.48 ms、p99 7.10 ms；兩台之間加 10 ms 單程延遲時 p50 46.4 ms（跟 .NET 的比較見第 5 節「延遲」）。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="crash" hidden>
+      <h3>主機崩潰（kill -9）：b 接手</h3>
+      <dl>
+        <dt>偵測</dt><dd>b 超過 3 秒沒聽到 a（<code>NodeState.try_begin_candidacy()</code>），向 witness 要租約。a 最後一次續約的租約這時也到期了，b 又是同步中，witness 就把租約交給 b，epoch 變 2。</dd>
+        <dt>切換</dt><dd>b 升格，複寫迴圈一開始就請 witness 記下「a 不同步」（<code>PrimaryTerm.request_solo()</code>），之後就能單獨確認寫入（Solo）。gateway 下一次輪詢就改送 b。</dd>
+        <dt>資料</dt><dd>a 確認過的每一筆，b 都已經收到過（同步複寫的規則），所以沒有遺失。</dd>
+        <dt>實測</dt><dd>RTO 3.11 秒（租約 3 秒＋續約間隔＋gateway 輪詢），3,285 筆確認的寫入遺失 0 筆。租約改 1 秒時 RTO 1.18 秒。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="failback" hidden>
+      <h3>舊主機加回來：a 變成備機</h3>
+      <dl>
+        <dt>重新加入</dt><dd>a 重啟後一律以備機身分啟動，馬上收到 b 的複寫。請求裡的 epoch 2 比 a 記得的 1 新，a 就接受 b 是主機（<code>NodeState.handle_replicate()</code>）。</dd>
+        <dt>對齊資料</dt><dd>b 用 (index, epoch) 跟 a 的 log 比對。a 崩潰前寫進本機、但還沒送到 b 的幾筆（從沒回過 200）會被丟掉，再補上 b 的新資料（<code>ReplicatedLog.append_from()</code>）。</dd>
+        <dt>恢復可接手</dt><dd>a 追上後，b 用最新的版本號告訴 witness「備機同步中」（<code>PrimaryTerm.try_mark_in_sync()</code>），a 就又能接手了。</dd>
+        <dt>實測</dt><dd>從啟動到追上 0.37 秒（含程式啟動），丟掉 1 筆從沒確認過的寫入。接著再砍 b，a 3.41 秒接手，兩次切換共 5,363 筆寫入遺失 0 筆。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="partition" hidden>
+      <h3>網路分區：a 跟 b、witness 都斷了，但 client 還連得到 a</h3>
+      <dl>
+        <dt>a 那邊</dt><dd>寫入送不到 b，等 1 秒後想請 witness 允許單獨確認，但 witness 也連不到，只能回 503。2.7 秒後 a 的租約到期，連讀取都停止。</dd>
+        <dt>b 那邊</dt><dd>3 秒沒聽到 a，向 witness 要到租約（epoch 2），開始服務。</dd>
+        <dt>網路恢復</dt><dd>a 看到 epoch 2，轉成備機，丟掉 8 筆從沒確認過的寫入，0.19 秒內兩邊資料一致。</dd>
+        <dt>實測</dt><dd>舊主機在斷線後確認了 0 筆，同時有兩台主機確認寫入 0 次，遺失 0 筆，b 3.05 秒接手。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="splitbrain" hidden>
+      <h3>同樣的分區，但沒有 witness（<code>ARBITER=none</code>，對照組）</h3>
+      <dl>
+        <dt>a 那邊</dt><dd>只覺得「備機連不到」，沒有人可以問（<code>NoArbiter</code> 一律同意），就自己繼續確認寫入。</dd>
+        <dt>b 那邊</dt><dd>3 秒＋1.5 秒的優先權延遲沒聽到 a，就自己升格成 epoch 2（<code>ElectionWorker.tick_without_witness()</code>，實測 4.65 秒）。現在兩台都是主機。</dd>
+        <dt>網路恢復</dt><dd>a 看到 epoch 2 而下台，它在分區期間確認的寫入跟 b 的 log 對不上，整批被丟掉，client 不會收到任何通知。</dd>
+        <dt>實測</dt><dd>兩台同時確認寫入 1,417 筆，恢復後 3,231 筆已確認的寫入消失。這就是需要 witness 的原因。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="witness" hidden>
+      <h3>witness 掛掉 6 秒</h3>
+      <dl>
+        <dt>為什麼沒事</dt><dd>a 有兩種租約：witness 給的，和 b 給的「承諾」（b 每次接受複寫，就承諾 3 秒內不搶主）。只要其中一個有效，a 就能繼續服務，等於 3 票中拿到 2 票。</dd>
+        <dt>寫入</dt><dd>照常同步複寫到 b，不需要 witness 參與。</dd>
+        <dt>witness 回來</dt><dd>從 <code>witness.json</code> 讀回狀態（租約在 a），a 下一次續約就恢復。</dd>
+        <dt>實測</dt><dd>4,384 筆寫入 0 失敗，最長空窗 0.02 秒，a 從沒下台。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="stale" hidden>
+      <h3>備機落後時主機又掛：寧可停機也不丟資料</h3>
+      <dl>
+        <dt>第一步</dt><dd>b 先掛。a 的寫入等 b 等了 1 秒（實測 1014 ms），請 witness 記下「b 不同步」後單獨確認（Solo），共 1,253 筆只有 a 有。</dd>
+        <dt>第二步</dt><dd>a 也掛了，接著 b 先回來。b 向 witness 要租約，witness 拒絕：「b 可能缺少已確認的寫入，等 a 回來」。gateway 找不到主機，回 503。</dd>
+        <dt>a 回來</dt><dd>witness 把租約還給 a（同一個 epoch），a 繼續服務，b 再從 a 追上。</dd>
+        <dt>實測</dt><dd>停機 11.46 秒（等 a 回來），遺失 0 筆。代價是可用性：要強制讓 b 接手只能人工介入並接受遺失。</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section id="journey">
+  <h2>3. 一筆寫入怎麼複寫到另一台</h2>
+  <p>以正常運作時的 <code>PUT /kv/order-1 {"value":"paid"}</code> 為例（a 是主機、同步複寫），從進門到回 200 經過這些程式碼：</p>
+  <ol class="steps">
+    <li style="--c: var(--gw)">
+      <div class="who">Gateway 轉給目前的主機</div>
+      <div class="where"><code>src/gateway/main.py</code> 的 <code>forward()</code>、<code>src/gateway/tracker.py</code> 的 <code>PrimaryTracker.current</code></div>
+      <p><code>PrimaryTracker.run()</code> 在背景每 100 ms 輪詢兩台的 <code>/health</code>，<code>choose()</code> 挑出回報 <code>primary</code> 且 epoch 最大的；回應不是 JSON 或型別不對，只把那台當成「不知道」，輪詢照常。<code>forward()</code> 用 httpx 把 method、原始路徑（保留百分比編碼）、query 和 body 送過去，回傳節點的狀態碼、body 和 <code>X-Served-By</code>；節點回 503 或連不上時立刻再輪詢一次（<code>nudge()</code>）。</p>
+    </li>
+    <li style="--c: var(--node)">
+      <div class="who">主機檢查自己的租約，寫進本機 log</div>
+      <div class="where"><code>src/node/main.py</code> 的 <code>put_value()</code> → <code>src/node/kv.py</code> 的 <code>KvService.put()</code> → <code>src/node/cluster/node_state.py</code> 的 <code>NodeState.append_as_primary()</code></div>
+      <p>.NET 版在這裡用一把鎖。Python 版整個節點只有一個 event loop，<strong>兩個 <code>await</code> 之間的程式碼不會被別的請求插隊</strong>，所以「我是主機而且租約還有效」和「附加到 log」寫成一段沒有 <code>await</code> 的同步函式，效果等同同一把鎖。下台（<code>_step_down()</code>）也是同步的，不可能夾在中間。</p>
+<pre>def append_as_primary(self, key: str, value: str) -&gt; tuple[LogEntry, PrimaryTerm]:
+    <span class="c">"""Checks the lease and appends in one atomic step, so a node can never append after it stopped serving."""</span>
+    term = self.serving_term()
+    if term is None:
+        raise not_primary()
+    entry = self.log.append(term.epoch, key, value)
+    term.notify_appended()
+    return entry, term</pre>
+      <p><code>ReplicatedLog.append()</code>（<code>storage/replicated_log.py</code>）給它下一個 index 和目前的 epoch，由 <code>LogFile.append()</code> 寫成一行 JSON，用不經過 Python 緩衝的 <code>os.write</code> 交給作業系統，程序被砍掉也不會不見。寫入失敗（例如磁碟滿了）時把檔案截回上一行結尾，不會留下半行讓下一筆黏在後面。這是在 event loop 上直接做的阻塞 I/O，但一行只有幾十 byte，耗時是微秒等級，不會拖到心跳。</p>
+    </li>
+    <li style="--c: var(--node)">
+      <div class="who">複寫迴圈被叫醒，送出這一批</div>
+      <div class="where"><code>src/node/cluster/replication.py</code> 的 <code>ReplicationWorker.replicate_term()</code></div>
+      <p><code>notify_appended()</code> 觸發一個 <code>asyncio.Event</code>，叫醒等待中的複寫迴圈（每次觸發後就換一個新的 Event，等待的一方先拿 Event 再讀 log，所以不會漏掉中間的寫入）。迴圈從 <code>next_index</code> 讀最多 256 筆，連同前一筆的 (index, epoch) 送到 b 的 <code>POST /internal/replicate</code>。一次只送一批，回來才送下一批；沒有新資料時每 0.5 秒送一次空的當心跳。</p>
+    </li>
+    <li style="--c: var(--node)">
+      <div class="who">備機檢查 epoch 和前一筆，寫進自己的 log</div>
+      <div class="where">b 的 <code>NodeState.handle_replicate()</code> → <code>ReplicatedLog.append_from()</code></div>
+      <p>epoch 比自己知道的舊 → 拒絕（被換掉的舊主機就是這樣被擋下的）。前一筆對不上 → 回 <code>mismatch</code>，主機往回找。對得上 → 附加，並記下「剛聽到主機」：這等於承諾 3 秒內不搶主，回覆裡的 <code>promiseMs</code> 就是這個承諾。這整段同樣沒有 <code>await</code>。</p>
+    </li>
+    <li style="--c: var(--node)">
+      <div class="who">主機收到回覆：延長租約、推進進度</div>
+      <div class="where"><code>ReplicationWorker.replicate_term()</code> 後半 → <code>PrimaryTerm.record_replicated()</code></div>
+<pre><span class="c"># The standby accepted this node as primary and promised not to seek the lease for a while.</span>
+self._state.extend_peer_lease(term, sent_at + reply.promise_ms / 1000 - config.lease_safety_margin)
+<span class="c"># ……</span>
+next_index = reply.match_index + 1
+if term.record_replicated(reply.match_index) and (in_sync_call is None or in_sync_call.done()):
+    <span class="c"># In the background: a slow witness must not hold up replication.</span>
+    in_sync_call = term.spawn(term.try_mark_in_sync(), "mark-in-sync")</pre>
+      <p>租約從「送出請求的時間」（<code>time.monotonic()</code>）起算，再提早 10% 結束，所以主機一定比備機先放手。</p>
+    </li>
+    <li style="--c: var(--node)">
+      <div class="who">等待中的寫入確認已經安全，回 200</div>
+      <div class="where"><code>KvService.put()</code> 等在 <code>PrimaryTerm.wait_durable()</code></div>
+      <p>這筆的 index 小於等於 b 已確認的 <code>match_index</code>，就可以回覆。如果 b 超過 1 秒都沒確認，改請 witness 同意「單獨確認」（<code>try_go_solo()</code>）；所有卡住的寫入共用同一個請求，各自用 <code>asyncio.shield()</code> 等它，一個 client 斷線不會把大家共用的請求取消掉。witness 同意後 b 就不能升格，這時只存在 a 的寫入也算安全了。</p>
+      <details><summary>看 wait_durable() 的程式碼</summary>
+<pre>async def wait_durable(self, index: int, timeout: float, clock: Clock) -&gt; None:
+    deadline = clock.now() + timeout
+    while True:
+        if index &lt;= self._match_index or self._peer_state is PeerState.SOLO:
+            return
+        if self._ended:
+            raise Unavailable("lost the primary role before the write reached the standby")
+        progress = self._progress.current
+        remaining = deadline - clock.now()
+        if remaining &lt;= 0:
+            if not await self.try_go_solo():
+                raise Unavailable("standby unreachable and the witness did not allow going on alone")
+            continue
+        try:
+            async with asyncio.timeout(remaining):
+                await progress.wait()
+        except TimeoutError:
+            pass  <span class="c"># deadline reached; the loop asks the witness</span></pre>
+      </details>
+    </li>
+  </ol>
+
+  <h3>每種狀況在哪裡被處理</h3>
+  <table>
+    <thead><tr><th>狀況</th><th>在哪裡</th><th>結果</th></tr></thead>
+    <tbody>
+      <tr><td>key 或 value 格式不對、不是 JSON、<code>"value": 1</code> 這種型別錯誤</td><td>第 2 步 <code>validate_key()</code>、<code>read_body()</code>、<code>parse_value()</code></td><td>400 <code>{"error": "..."}</code>（FastAPI 預設的 <code>{"detail": ...}</code> 也改成這個格式）</td></tr>
+      <tr><td>body 超過 30 MB</td><td>第 1、2 步 <code>read_capped_body()</code></td><td>413 <code>request body too large</code></td></tr>
+      <tr><td>送到備機，或主機的租約剛到期</td><td>第 2 步 <code>append_as_primary()</code></td><td>503 <code>not primary</code>，gateway 立刻重新找主機</td></tr>
+      <tr><td>還沒有任何主機（切換中）</td><td>第 1 步 gateway</td><td>503 <code>no primary available</code></td></tr>
+      <tr><td>主機連不上</td><td>第 1 步 gateway 的 httpx 例外</td><td>502 <code>primary unavailable</code></td></tr>
+      <tr><td>被換掉的舊主機還在送複寫</td><td>第 4 步 epoch 比較</td><td>拒絕；舊主機看到新 epoch 就下台</td></tr>
+      <tr><td>備機缺資料或有分歧的舊資料</td><td>第 4 步 (index, epoch) 比對</td><td><code>mismatch</code>，主機往回找，備機截掉分歧的部分</td></tr>
+      <tr><td>備機 1 秒沒回應</td><td>第 6 步，請 witness 允許單獨確認</td><td>witness 同意就 200，否則 503</td></tr>
+      <tr><td>等待中主機被換掉</td><td>第 6 步 <code>_ended</code></td><td>503（這筆可能存活也可能被丟掉，client 要當作不確定）</td></tr>
+    </tbody>
+  </table>
+  <p class="note">client 收到 503 或逾時的寫入，結果是「不確定」：可能已經在新主機上，也可能被丟掉。正式系統要加冪等鍵，讓 client 可以安全重送。</p>
+</section>
+
+<section id="startup">
+  <h2>4. 啟動時發生什麼</h2>
+  <p><code>run.sh</code> 用 <code>exec .venv/bin/uvicorn --factory &lt;套件&gt;.main:create_app --app-dir src --host 127.0.0.1 --loop uvloop --http httptools --lifespan on --no-access-log</code> 啟動。用 <code>exec</code> 是因為 verify 腳本拿到的 PID 必須就是伺服器本身（它會直接 <code>SIGKILL</code>）；單一程序，沒有 reload、沒有多 worker。<code>--lifespan on</code> 讓背景迴圈啟動失敗時整個程序跟著失敗，而不是被 uvicorn 當成「不支援 lifespan」默默略過。</p>
+  <div class="cols">
+    <div class="card wit">
+      <h3>Witness</h3>
+      <p><code>src/witness/main.py</code> 的 <code>create_app()</code>：<code>WitnessConfig.from_env()</code> 讀 <code>PORT</code>、<code>DATA_DIR</code>、<code>NODES</code>、<code>LEASE_TTL_MS</code> → 建立 <code>LeaseTable</code>。<code>LeaseTable</code> 從 <code>witness.json</code> 讀回上次的狀態；如果之前有人持有租約，就當作它還持有一個完整的 TTL，因為重啟期間那台可能還在服務。</p>
+    </div>
+    <div class="card nd">
+      <h3>Node</h3>
+      <p><code>src/node/main.py</code> 的 <code>create_app()</code>：<code>NodeConfig.from_env()</code>（設定互相矛盾會直接啟動失敗，例如租約短於 3 次續約，訊息會點名變數）→ <code>NodeRuntime</code>：開啟 <code>log.jsonl</code>（最後一行寫到一半就丟掉，中間壞掉就拒絕啟動）、建立 <code>NodeState</code>（從 <code>epoch.json</code> 讀回 epoch）。lifespan 啟動時用 <code>tasks.supervise()</code> 包著 <code>ElectionWorker.run()</code> 和 <code>ReplicationWorker.run()</code> 兩個 task。一律以備機身分啟動，先等一個 TTL 才可能去搶主。</p>
+    </div>
+    <div class="card gw">
+      <h3>Gateway</h3>
+      <p><code>src/gateway/main.py</code> 的 <code>create_app()</code>：<code>GatewayConfig.from_env()</code> 讀 <code>PORT</code>、<code>NODE_URLS</code>、<code>POLL_INTERVAL_MS</code> → 建立 httpx client 和 <code>PrimaryTracker</code>，lifespan 啟動輪詢 task。剛啟動還沒輪詢到主機時，所有請求回 503。</p>
+    </div>
+  </div>
+  <p>「重啟後先等一個 TTL」很關鍵：備機重啟前可能剛承諾過主機「3 秒內不搶」，重啟後記憶體裡的承諾不見了，所以把啟動當成「剛聽到主機」來處理。</p>
+<pre><span class="c"># src/node/cluster/node_state.py: NodeState.__init__()</span>
+self._last_heard_from_primary = clock.now()
+
+def try_begin_candidacy(self) -&gt; bool:
+    silence = self.clock.now() - self._last_heard_from_primary
+    if self._term is not None or self._candidate or silence &lt; self._config.lease_ttl + self._config.election_delay:
+        return False
+    self._candidate = True
+    return True</pre>
+</section>
+
+<section id="design">
+  <h2>5. 關鍵設計</h2>
+
+  <h3>witness 只在三種情況下換主機</h3>
+  <p>現任主機續約永遠成功；別人要拿租約，必須「租約已到期」而且「自己是同步中的備機」。換手時 epoch 加 1，成為 fencing token。</p>
+<pre><span class="c"># src/witness/lease_table.py</span>
+def acquire(self, node: str | None) -&gt; LeaseReply:
+    self._require_known(node)
+    now = self._clock.now()
+    holder = self._state.holder
+    if holder == node:
+        <span class="c"># Also after expiry: nobody else took over in between, so the holder still has the newest data.</span>
+        self._expires_at = now + self._config.lease_ttl
+        return self._reply(granted=True)
+    if holder is not None and now &lt; self._expires_at:
+        return self._reply(granted=False, reason=f"lease held by {holder}")
+    if holder is not None and not self._state.standby_in_sync:
+        return self._reply(granted=False, reason=f"{node} may be missing acknowledged writes; waiting for {holder} to return")
+    <span class="c"># …… 換手：先寫進 witness.json 再生效，epoch + 1，新的備機（舊主機）先標成不同步</span></pre>
+
+  <h3>從 .NET 搬過來的規則</h3>
+  <table>
+    <thead><tr><th>設計</th><th>為什麼</th><th>在哪裡</th></tr></thead>
+    <tbody>
+      <tr><td>兩種租約：witness 的，和備機的承諾</td><td>只要拿到 3 票中的 2 票就能服務，witness 單獨掛掉或備機單獨掛掉都不會停</td><td><code>NodeState._lease_until()</code>、<code>extend_peer_lease()</code></td></tr>
+      <tr><td>備機在向 witness 要租約時拒絕所有複寫</td><td>否則它可能一邊被 witness 授權，一邊又承諾舊主機「不搶主」，兩台會同時有權服務</td><td><code>NodeState.handle_replicate()</code> 的 <code>_candidate</code></td></tr>
+      <tr><td>witness 的同步狀態帶版本號</td><td>逾時放棄的 HTTP 請求還是可能晚到。「備機同步中」必須附上最新版本才會被接受，晚到的舊訊息蓋不掉後來的「備機不同步」</td><td><code>LeaseTable.set_standby_in_sync()</code>、<code>PrimaryTerm.try_mark_in_sync()</code></td></tr>
+      <tr><td>對 witness 的呼叫一次只送一個</td><td>同一個任期內的兩個報告不會互相超車</td><td><code>PrimaryTerm</code> 的 <code>_witness_calls</code>（<code>asyncio.Lock</code>）</td></tr>
+      <tr><td>Raft 式 log 比對</td><td>用 (index, epoch) 認出分歧的資料；只截掉比目前主機舊的 epoch，所以晚到的舊心跳不會誤刪新資料</td><td><code>ReplicatedLog.append_from()</code></td></tr>
+      <tr><td>讀取也等到安全才回</td><td>不讓 client 看到「切換後會消失」的值</td><td><code>KvService.get()</code></td></tr>
+      <tr><td>單調時鐘</td><td>租約和逾時都用 <code>time.monotonic()</code>，不會因為系統時間被調整而變長或變短</td><td><code>src/shared/clock.py</code></td></tr>
+      <tr><td>沒有 witness 的對照組</td><td>同一份程式，<code>ARBITER=none</code> 時備機 3 秒沒聽到主機就自己升格，用來實測腦裂的代價</td><td><code>ElectionWorker.tick_without_witness()</code>、<code>NoArbiter</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>換成 asyncio 之後要注意的地方</h3>
+  <table>
+    <thead><tr><th>.NET 的做法</th><th>Python 版的對應</th><th>在哪裡</th></tr></thead>
+    <tbody>
+      <tr><td><code>lock (_gate)</code> 保護「檢查再動作」</td><td>不用鎖：一個 event loop、所有狀態只在 loop 上改。規則是「檢查到動作之間不能有 <code>await</code>」，所以 <code>NodeState</code>、<code>ReplicatedLog</code>、<code>LeaseTable</code> 的方法全部是同步函式。所有端點都是 <code>async def</code>，因為一般的 <code>def</code> 會被 FastAPI 丟到 thread pool 執行，就會跟 loop 搶狀態。</td><td><code>node_state.py</code>、<code>replicated_log.py</code>、<code>lease_table.py</code></td></tr>
+      <tr><td>任期結束時取消 <code>Ended</code> token</td><td>屬於一個任期的背景工作（複寫迴圈、請 witness 單獨確認、回報同步中）都用 <code>PrimaryTerm.spawn()</code> 建立，<code>end()</code> 時一起 <code>cancel()</code>。複寫 task 被取消時，外層用 <code>Task.cancelling()</code> 分辨是「任期結束」還是「程序要關了」。</td><td><code>PrimaryTerm.spawn()</code>、<code>ReplicationWorker.run()</code></td></tr>
+      <tr><td><code>TaskCompletionSource</code> 當訊號</td><td><code>Signal</code>：觸發就換一個新的 <code>asyncio.Event</code>。等待的一方先拿 Event 再檢查狀態，之後的變化一定會叫醒它。</td><td><code>primary_term.py</code> 的 <code>Signal</code></td></tr>
+      <tr><td><code>CancelAfter(RENEW_INTERVAL)</code></td><td><code>asyncio.timeout()</code> 包住整個 httpx 呼叫（連線到最後一個 byte），逾時回 <code>None</code>；外層的取消照樣往上傳，不會被吞掉。httpx 設 <code>trust_env=False</code>，環境裡的 proxy 設定不會影響程序之間的呼叫。</td><td><code>RpcClient.post()</code></td></tr>
+      <tr><td>BackgroundService 丟例外就停掉整個 host</td><td><code>tasks.supervise()</code> 記錄 CRITICAL 後送 <code>SIGTERM</code> 給自己，讓 uvicorn 正常關閉；不是衝著自己來的 <code>CancelledError</code> 也算異常。選主迴圈死掉的節點如果繼續活著，會一直被當成主機卻不續約也不下台，不如直接停掉讓備機接手。一般的背景 task 失敗也一定會記錄（<code>tasks.spawn()</code>）。</td><td><code>src/shared/tasks.py</code></td></tr>
+      <tr><td>SocketsHttpHandler 沒有連線數上限</td><td>gateway 的 httpx client 設 <code>httpx.Limits(max_connections=None)</code>。httpx 預設最多 100 條連線，健康檢查和轉發共用同一個連線池，寫入一慢，健康檢查就排不到連線、逾時，gateway 會誤以為沒有主機。</td><td><code>src/gateway/main.py</code> 的 <code>UPSTREAM_LIMITS</code></td></tr>
+      <tr><td>Kestrel 預設 request body 上限 30 MB</td><td><code>read_capped_body()</code> 邊讀邊算，超過就回 413，不會把整個程序的記憶體吃光。</td><td><code>src/shared/http.py</code></td></tr>
+      <tr><td>System.Text.Json 嚴格模式</td><td>自己寫的 <code>JsonObject</code>：欄位名稱不分大小寫，數字要是整數（<code>"2"</code>、<code>2.0</code>、<code>true</code> 都不算），型別錯就回 <code>invalid JSON body at $.欄位</code>。value 長度用 UTF-16 code unit 算，跟 .NET 的 <code>string.Length</code> 一樣。</td><td><code>src/shared/wire.py</code>、<code>node/kv.py</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>延遲：跟 .NET 比</h3>
+  <p>本機 loopback 上同步寫入 p50 約 3.48 ms（.NET 0.94 ms），差距是 Python 處理 HTTP 本身的成本。兩台之間加 10 ms 單程延遲的 <code>crash-slow</code>，p50 是 46.4 ms（.NET 40.5 ms）：網路延遲占了絕大部分，語言的差距只剩幾 ms。</p>
+  <ul>
+    <li>兩種語言都要約 2 個來回（約 40 ms），不是 1 個：複寫一次只送一批，寫入如果在一批送出途中到達，要等這批回來再等下一批。</li>
+    <li>httpx 把一個請求的 header 和 body 分成兩次寫入 socket，uvicorn 回覆時也一樣。<code>verify/chaos.py</code> 的代理一開始對每一次寫入各延遲一次，把這裡量成 71 ms；改成真實網路的行為（每段資料都晚 10 ms 到，但連續送出的仍連續到達）之後，才是 46 ms。</li>
+  </ul>
+  <p class="note">還沒處理：斷電（log 只寫進作業系統，沒有 fsync）、gateway 本身的備援、各程序之間的身分驗證。複寫一次只送一批，所以同步寫入要 1 到 2 個網路來回。</p>
+</section>
+
+<section id="run">
+  <h2>6. 怎麼跑</h2>
+<pre><span class="c"># 在 python/ 底下（需要 uv；Python 3.12 以上）</span>
+./run.sh build                     <span class="c"># uv sync --locked</span>
+./run.sh test                      <span class="c"># pytest＋覆蓋率（含同一程序內跑整個叢集）</span>
+uv run ruff check &amp;&amp; uv run ruff format --check
+
+<span class="c"># 手動啟動（四個終端機）</span>
+PORT=8103 ./run.sh witness
+PORT=8101 NODE_ID=a PEER_URL=http://127.0.0.1:8102 ./run.sh node
+PORT=8102 NODE_ID=b PEER_URL=http://127.0.0.1:8101 ./run.sh node
+PORT=8100 ./run.sh gateway
+
+<span class="c"># 打打看：約 3 秒後選出主機</span>
+curl -s http://127.0.0.1:8100/health
+curl -i -X PUT http://127.0.0.1:8100/kv/order-1 -H 'Content-Type: application/json' -d '{"value":"paid"}'
+curl -s http://127.0.0.1:8101/health; curl -s http://127.0.0.1:8102/health
+<span class="c"># 砍掉主機那個終端機（Ctrl+C），約 3 秒後再寫一次，會由另一台回應</span>
+
+<span class="c"># 全部故障情境的自動驗證（在 PoC 根目錄）</span>
+../verify/run.sh python
+VERIFY_PORT_BASE=8300 ../verify/run.sh python crash   <span class="c"># 換一組 port，可以跟別的實作同時跑</span></pre>
+
+  <table>
+    <thead><tr><th>環境變數</th><th>用在</th><th>預設</th><th>說明</th></tr></thead>
+    <tbody>
+      <tr><td><code>PORT</code></td><td>全部</td><td>8100 / 8101 / 8103</td><td>只綁 127.0.0.1</td></tr>
+      <tr><td><code>NODE_ID</code></td><td>Node</td><td><code>a</code></td><td>小寫英數與 <code>-</code>，1 到 32 個字</td></tr>
+      <tr><td><code>PEER_URL</code>、<code>WITNESS_URL</code></td><td>Node</td><td><code>http://127.0.0.1:8102</code>、<code>:8103</code></td><td>另一台節點和 witness 的位址</td></tr>
+      <tr><td><code>DATA_DIR</code></td><td>Node、Witness</td><td><code>data/&lt;NODE_ID&gt;</code>、<code>data/witness</code></td><td>log、epoch、witness 狀態檔放這裡</td></tr>
+      <tr><td><code>ARBITER</code></td><td>Node</td><td><code>witness</code></td><td><code>none</code>：沒有 witness 的對照組</td></tr>
+      <tr><td><code>REPLICATION</code></td><td>Node</td><td><code>sync</code></td><td><code>async</code>：寫進本機就回 200</td></tr>
+      <tr><td><code>LEASE_TTL_MS</code></td><td>Node、Witness</td><td>3000</td><td>租約長度，兩邊要設一樣</td></tr>
+      <tr><td><code>RENEW_INTERVAL_MS</code></td><td>Node</td><td>500</td><td>續約和心跳間隔，也是每次呼叫的逾時</td></tr>
+      <tr><td><code>REPLICATION_TIMEOUT_MS</code></td><td>Node</td><td>1000</td><td>同步寫入等備機多久才改問 witness</td></tr>
+      <tr><td><code>ELECTION_DELAY_MS</code></td><td>Node</td><td>0</td><td>搶主前多等一下（只在沒有 witness 時有用）</td></tr>
+      <tr><td><code>NODES</code></td><td>Witness</td><td><code>a,b</code></td><td>允許持有租約的兩個節點</td></tr>
+      <tr><td><code>NODE_URLS</code>、<code>POLL_INTERVAL_MS</code></td><td>Gateway</td><td><code>a=http://127.0.0.1:8101,b=…:8102</code>、100</td><td>要輪詢的節點與間隔</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  完整的實驗設計、三種語言的比較和結論，請看 <a href="../README.md">PoC 的 README</a>。同樣的說明也有 <a href="../dotnet/how-it-works.html">.NET 版</a> 和 <a href="../rust/how-it-works.html">Rust 版</a>。
+</footer>
+
+</main>
+<script>
+  const SCENARIOS = {
+    normal: {
+      on: ["client", "gw-a", "a-b", "a-w"], fail: [], dim: [], down: [], primary: ["a"],
+      roles: { a: "主機 · epoch 1", b: "備機 · 同步中", w: "租約：a · b 可接手" },
+    },
+    crash: {
+      on: ["client", "gw-b", "b-w"], fail: ["gw-a", "b-a"], dim: [], down: ["a"], primary: ["b"],
+      roles: { a: "✕ 停機", b: "主機 · epoch 2 · 單獨確認", w: "租約：b · a 不可接手" },
+    },
+    failback: {
+      on: ["client", "gw-b", "b-a", "b-w"], fail: [], dim: [], down: [], primary: ["b"],
+      roles: { a: "備機 · 丟掉未確認的 → 追上", b: "主機 · epoch 2", w: "租約：b · a 可接手" },
+    },
+    partition: {
+      on: ["client", "gw-b", "b-w"], fail: ["gw-a", "a-b", "b-a", "a-w"], dim: [], down: [], primary: ["b"],
+      roles: { a: "租約到期 · 拒絕寫入（503）", b: "主機 · epoch 2", w: "租約：b" },
+    },
+    splitbrain: {
+      on: ["client", "gw-a", "gw-b"], fail: ["a-b", "b-a"], dim: ["w", "a-w", "b-w"], down: [], primary: ["a", "b"],
+      roles: { a: "主機 · epoch 1（自以為）", b: "主機 · epoch 2", w: "沒有使用" },
+    },
+    witness: {
+      on: ["client", "gw-a", "a-b"], fail: ["a-w"], dim: [], down: ["w"], primary: ["a"],
+      roles: { a: "主機 · 靠 b 的承諾續約", b: "備機 · 同步中", w: "✕ 停機" },
+    },
+    stale: {
+      on: ["client"], fail: ["gw-a", "gw-b", "b-w"], dim: [], down: ["a"], primary: [],
+      roles: { a: "✕ 停機（有 1,253 筆 b 沒有）", b: "備機 · 被拒絕接手", w: "租約：a · b 不可接手" },
+    },
+  };
+
+  function showScenario(id) {
+    const s = SCENARIOS[id];
+    document.querySelectorAll("#flow [data-edge]").forEach((edge) => {
+      edge.classList.toggle("on", s.on.includes(edge.dataset.edge));
+      edge.classList.toggle("fail", s.fail.includes(edge.dataset.edge));
+      edge.style.opacity = s.dim.includes(edge.dataset.edge) ? ".15" : "";
+    });
+    document.querySelectorAll("#flow [data-node]").forEach((node) => {
+      node.classList.toggle("dim", s.dim.includes(node.dataset.node));
+      node.classList.toggle("down", s.down.includes(node.dataset.node));
+      node.classList.toggle("primary", s.primary.includes(node.dataset.node));
+    });
+    document.querySelectorAll("#flow [data-role]").forEach((label) => { label.textContent = s.roles[label.dataset.role]; });
+    document.querySelectorAll("[data-panel]").forEach((panel) => { panel.hidden = panel.dataset.panel !== id; });
+    document.querySelectorAll("[data-phase-btn]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.phaseBtn === id));
+    });
+  }
+
+  document.querySelectorAll("[data-phase-btn]").forEach((button) => {
+    button.addEventListener("click", () => showScenario(button.dataset.phaseBtn));
+  });
+  showScenario("normal");
+</script>
+</body>
+</html>

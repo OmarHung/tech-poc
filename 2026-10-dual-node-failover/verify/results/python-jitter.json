@@ -1,0 +1,18 @@
+{
+  "impl": "python",
+  "scenario": "jitter",
+  "title": "Primary's network flaps for 20 s (blackouts <= 1.5 s)",
+  "passed": 6,
+  "failures": [],
+  "metrics": {
+    "blackouts": 3,
+    "longest_blackout_s": 1.16,
+    "slow_periods": 5,
+    "writes_during_storm": 4426,
+    "failed_writes_during_storm": 4,
+    "write_p99_ms_during_storm": 440.18,
+    "failovers": 0,
+    "lost_acked_writes": 0,
+    "acks_while_both_primary": 0
+  }
+}

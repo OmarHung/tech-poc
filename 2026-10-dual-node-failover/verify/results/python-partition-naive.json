@@ -1,0 +1,16 @@
+{
+  "impl": "python",
+  "scenario": "partition-naive",
+  "title": "Same partition without a witness (control group)",
+  "passed": 3,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 7725,
+    "rto_s": 4.646,
+    "old_primary_acks_after_cut": 3231,
+    "acks_while_both_primary": 1417,
+    "lost_acked_writes": 3231,
+    "heal_to_converged_s": 0.191,
+    "rejoin_discarded_entries": 3231
+  }
+}

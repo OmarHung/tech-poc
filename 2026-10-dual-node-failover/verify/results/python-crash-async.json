@@ -1,0 +1,16 @@
+{
+  "impl": "python",
+  "scenario": "crash-async",
+  "title": "Primary killed, async replication",
+  "passed": 3,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 3380,
+    "rto_s": 3.196,
+    "lost_acked_writes": 1,
+    "lost_window_ms": -0.8,
+    "write_p50_ms": 2.55,
+    "write_p99_ms": 4.74,
+    "rejoin_discarded_entries": 1
+  }
+}

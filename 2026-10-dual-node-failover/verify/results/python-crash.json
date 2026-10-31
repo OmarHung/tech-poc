@@ -1,0 +1,20 @@
+{
+  "impl": "python",
+  "scenario": "crash",
+  "title": "Primary killed, then rejoins and takes over again (sync)",
+  "passed": 8,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 3285,
+    "write_p50_ms": 3.48,
+    "write_p99_ms": 7.1,
+    "rto_s": 3.11,
+    "longest_write_gap_s": 3.118,
+    "lost_acked_writes": 0,
+    "rejoin_catch_up_s": 0.365,
+    "rejoin_catch_up_after_ready_s": 0.122,
+    "rejoin_discarded_entries": 1,
+    "second_rto_s": 3.406,
+    "acked_writes_total": 5363
+  }
+}

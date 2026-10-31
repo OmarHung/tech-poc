@@ -1,0 +1,15 @@
+{
+  "impl": "rust",
+  "scenario": "late-messages",
+  "title": "Primary's links slower than its timeouts while the standby restarts; then primary killed",
+  "passed": 2,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 1870,
+    "failed_writes": 13476,
+    "standby_took_over": false,
+    "rto_s": null,
+    "lost_acked_writes": 0,
+    "acks_while_both_primary": 0
+  }
+}

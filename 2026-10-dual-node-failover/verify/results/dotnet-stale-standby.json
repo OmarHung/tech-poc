@@ -1,0 +1,14 @@
+{
+  "impl": "dotnet",
+  "scenario": "stale-standby",
+  "title": "Standby dies, then primary dies, stale standby returns first",
+  "passed": 5,
+  "failures": [],
+  "metrics": {
+    "acked_while_alone": 1572,
+    "stall_when_standby_died_ms": 1009.6,
+    "acked_while_both_down": 0,
+    "outage_s": 11.709,
+    "lost_acked_writes": 0
+  }
+}

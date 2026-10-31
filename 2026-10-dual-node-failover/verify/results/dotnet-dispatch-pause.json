@@ -1,0 +1,24 @@
+{
+  "impl": "dotnet",
+  "scenario": "dispatch-pause",
+  "title": "Dispatch: a frozen past its lease, then resumed",
+  "passed": 4,
+  "failures": [],
+  "metrics": {
+    "produced": 50,
+    "applied": 50,
+    "received": 50,
+    "extra_copies": 0,
+    "conflicts": 0,
+    "stale": 0,
+    "missing": 0,
+    "wrong": 0,
+    "latency_p50_ms": 837,
+    "latency_p99_ms": 2340,
+    "latency_max_ms": 2340,
+    "longest_output_gap_ms": 413,
+    "reassignments": 1,
+    "stale_completions": 0,
+    "abandoned_by_a": 1
+  }
+}

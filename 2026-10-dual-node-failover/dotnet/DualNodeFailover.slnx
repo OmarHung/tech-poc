@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Shared/Shared.csproj" />
+    <Project Path="src/Witness/Witness.csproj" />
+    <Project Path="src/Node/Node.csproj" />
+    <Project Path="src/Gateway/Gateway.csproj" />
+    <Project Path="src/Upstream/Upstream.csproj" />
+    <Project Path="src/Worker/Worker.csproj" />
+    <Project Path="src/Sink/Sink.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Witness.Tests/Witness.Tests.csproj" />
+    <Project Path="tests/Node.Tests/Node.Tests.csproj" />
+    <Project Path="tests/Gateway.Tests/Gateway.Tests.csproj" />
+    <Project Path="tests/Upstream.Tests/Upstream.Tests.csproj" />
+    <Project Path="tests/Worker.Tests/Worker.Tests.csproj" />
+    <Project Path="tests/Sink.Tests/Sink.Tests.csproj" />
+  </Folder>
+</Solution>

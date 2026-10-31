@@ -1,0 +1,22 @@
+{
+  "impl": "dotnet",
+  "scenario": "dispatch-long",
+  "title": "Dispatch: tasks longer than the lease, kept alive by heartbeats",
+  "passed": 4,
+  "failures": [],
+  "metrics": {
+    "produced": 4,
+    "applied": 4,
+    "received": 4,
+    "extra_copies": 0,
+    "conflicts": 0,
+    "stale": 0,
+    "missing": 0,
+    "wrong": 0,
+    "latency_p50_ms": 3013,
+    "latency_p99_ms": 3032,
+    "latency_max_ms": 3032,
+    "longest_output_gap_ms": 2006,
+    "reassignments": 0
+  }
+}

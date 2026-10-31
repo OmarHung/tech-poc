@@ -1,0 +1,16 @@
+{
+  "impl": "rust",
+  "scenario": "partition-naive",
+  "title": "Same partition without a witness (control group)",
+  "passed": 3,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 8097,
+    "rto_s": 4.989,
+    "old_primary_acks_after_cut": 3429,
+    "acks_while_both_primary": 1377,
+    "lost_acked_writes": 3429,
+    "heal_to_converged_s": 0.205,
+    "rejoin_discarded_entries": 3429
+  }
+}

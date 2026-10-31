@@ -1,0 +1,16 @@
+{
+  "impl": "dotnet",
+  "scenario": "partition-naive",
+  "title": "Same partition without a witness (control group)",
+  "passed": 3,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 8110,
+    "rto_s": 4.797,
+    "old_primary_acks_after_cut": 3342,
+    "acks_while_both_primary": 1376,
+    "lost_acked_writes": 3344,
+    "heal_to_converged_s": 0.189,
+    "rejoin_discarded_entries": 3344
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "impl": "dotnet",
+  "scenario": "hothot-skip",
+  "title": "Hot-hot: a rejoins at the newest event instead of its checkpoint (control group)",
+  "passed": 3,
+  "failures": [],
+  "metrics": {
+    "produced": 1862,
+    "applied": 1862,
+    "received": 2795,
+    "extra_copies": 933,
+    "conflicts": 473,
+    "stale": 0,
+    "missing": 0,
+    "wrong": 505,
+    "latency_p50_ms": 1,
+    "latency_p99_ms": 5,
+    "latency_max_ms": 25,
+    "longest_output_gap_ms": 74
+  }
+}

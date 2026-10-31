@@ -1,0 +1,16 @@
+{
+  "impl": "dotnet",
+  "scenario": "crash-async-slow",
+  "title": "Primary killed, async, 10 ms between the nodes",
+  "passed": 3,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 3931,
+    "rto_s": 3.292,
+    "lost_acked_writes": 3,
+    "lost_window_ms": 0.4,
+    "write_p50_ms": 0.38,
+    "write_p99_ms": 0.79,
+    "rejoin_discarded_entries": 3
+  }
+}

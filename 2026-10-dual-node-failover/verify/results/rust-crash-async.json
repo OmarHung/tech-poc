@@ -1,0 +1,16 @@
+{
+  "impl": "rust",
+  "scenario": "crash-async",
+  "title": "Primary killed, async replication",
+  "passed": 3,
+  "failures": [],
+  "metrics": {
+    "acked_writes": 4120,
+    "rto_s": 3.582,
+    "lost_acked_writes": 0,
+    "lost_window_ms": 0,
+    "write_p50_ms": 0.84,
+    "write_p99_ms": 2.12,
+    "rejoin_discarded_entries": 0
+  }
+}
