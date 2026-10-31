@@ -1,0 +1,26 @@
+{
+  "lang": "dotnet",
+  "phase": "push-poll",
+  "passed": 3,
+  "failures": [],
+  "mode": "poll",
+  "users": 1000,
+  "window_s": 20.1,
+  "waiting_at_start": 975,
+  "admissions_per_s": 4.7,
+  "status_delay": {
+    "n": 95,
+    "p50_ms": 480,
+    "p95_ms": 533,
+    "p99_ms": 535,
+    "max_ms": 535
+  },
+  "app_requests_per_s": 931,
+  "events_per_s": 0,
+  "redis_scripts_per_s": 971,
+  "redis_busy_percent": 6.0,
+  "app_cpu_percent": 57.8,
+  "app_rss_mb": 350,
+  "errors": [],
+  "error_count": 0
+}

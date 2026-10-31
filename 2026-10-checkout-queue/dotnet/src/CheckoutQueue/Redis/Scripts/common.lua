@@ -13,6 +13,7 @@
 --   ticket:<id>          hash           userId seq status joinedAt lastSeenAt admittedAt admissionExpiresAt orderId
 --   waiting              zset           ticketId by seq (the line)
 --   tickets              zset           every ticketId ever issued, by seq, for the admin board
+--   admitted             pub/sub        space-separated ticketIds admitted by one admit.lua pass
 --   active               zset           ticketId by admission deadline (who may check out now)
 --   order:<id>           hash           ticketId userId quantity status createdAt paymentExpiresAt paidAt
 --   pending              zset           orderId by payment deadline (stock held for unpaid orders)

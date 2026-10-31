@@ -16,6 +16,7 @@ if #lapsed > 0 then redis.call('ZREMRANGEBYSCORE', key('active'), '-inf', now) e
 local free = math.min(maxActive, stock()) - redis.call('ZCARD', key('active'))
 local inLine = redis.call('ZCARD', key('waiting'))
 local admitted, abandoned, scanned = 0, 0, 0
+local admittedIds = {}
 while admitted < free and scanned < maxScan do
   local head = redis.call('ZPOPMIN', key('waiting'))
   if #head == 0 then break end
@@ -30,8 +31,13 @@ while admitted < free and scanned < maxScan do
     redis.call('HSET', ticketKey, 'status', 'admitted', 'admittedAt', now, 'admissionExpiresAt', deadline)
     redis.call('ZADD', key('active'), deadline, id)
     admitted = admitted + 1
+    admittedIds[admitted] = id
   end
 end
+
+-- Tell every instance who just got in, so the ones holding those users' event streams can
+-- push right away instead of waiting for their next refresh.
+if admitted > 0 then redis.call('PUBLISH', key('admitted'), table.concat(admittedIds, ' ')) end
 
 -- 3. Admissions per second over the last rateWindow seconds, for wait estimates.
 --    Counted from when people first lined up, so the opening seconds are not diluted by

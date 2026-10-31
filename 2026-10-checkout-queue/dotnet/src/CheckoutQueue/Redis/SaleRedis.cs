@@ -12,6 +12,11 @@ public sealed class SaleRedis(IConnectionMultiplexer connection, CheckoutQueueCo
     private readonly IDatabase _db = connection.GetDatabase();
     private readonly RedisValue _prefix = $"cq:{{{config.SaleId}}}:";
 
+    /// <summary>admit.lua publishes the ticket ids it just admitted here.</summary>
+    public RedisChannel AdmittedChannel => RedisChannel.Literal($"cq:{{{config.SaleId}}}:admitted");
+
+    public ISubscriber Subscriber => connection.GetSubscriber();
+
     public long NowMs => time.GetUtcNow().ToUnixTimeMilliseconds();
 
     /// <summary>Sets the stock if this sale has never started. Returns the stock the sale actually started with.</summary>

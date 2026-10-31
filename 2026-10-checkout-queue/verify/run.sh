@@ -21,6 +21,7 @@ HEALTH_TIMEOUT_S=60
 LOG_DIR="$ROOT/verify/logs"
 mkdir -p "$LOG_DIR"
 REDIS_CONTAINER="checkout-queue-redis-$$"
+export REDIS_CONTAINER
 STARTED_PIDS=""
 
 cleanup() {
@@ -88,5 +89,14 @@ export INITIAL_STOCK=1000000 MAX_ACTIVE=1
 start_instances throughput
 scenario throughput || FAILED=1
 stop_instances
+
+# Push vs polling: the same long, steadily moving line, watched once by polling and once over SSE.
+export INITIAL_STOCK=1000000 MAX_ACTIVE=5 ADMISSION_WINDOW_MS=10000 PAYMENT_WINDOW_MS=60000 \
+  HEARTBEAT_TIMEOUT_MS=5000 POLL_INTERVAL_MS=1000 TICK_MS=100
+for mode in poll sse; do
+  start_instances "push-$mode"
+  APP_PIDS="$STARTED_PIDS" python3 -I "$ROOT/verify/push.py" --lang "$IMPL_NAME" --mode "$mode" || FAILED=1
+  stop_instances
+done
 
 exit "$FAILED"

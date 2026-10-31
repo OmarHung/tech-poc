@@ -1,0 +1,26 @@
+{
+  "lang": "dotnet",
+  "phase": "push-sse",
+  "passed": 3,
+  "failures": [],
+  "mode": "sse",
+  "users": 1000,
+  "window_s": 20.2,
+  "waiting_at_start": 950,
+  "admissions_per_s": 9.2,
+  "status_delay": {
+    "n": 185,
+    "p50_ms": 3,
+    "p95_ms": 14,
+    "p99_ms": 26,
+    "max_ms": 29
+  },
+  "app_requests_per_s": 9,
+  "events_per_s": 862,
+  "redis_scripts_per_s": 57,
+  "redis_busy_percent": 3.0,
+  "app_cpu_percent": 17.3,
+  "app_rss_mb": 283,
+  "errors": [],
+  "error_count": 0
+}

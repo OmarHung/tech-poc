@@ -75,6 +75,8 @@ public sealed class ApiTests(RedisFixture redis)
     [InlineData("POST", "/queue/join", null, HttpStatusCode.BadRequest)]
     [InlineData("GET", "/queue/tickets/not-an-id", null, HttpStatusCode.BadRequest)]
     [InlineData("GET", "/queue/tickets/{unknown}", null, HttpStatusCode.NotFound)]
+    [InlineData("GET", "/queue/tickets/{unknown}/events", null, HttpStatusCode.NotFound)]
+    [InlineData("GET", "/queue/tickets/not-an-id/events", null, HttpStatusCode.BadRequest)]
     [InlineData("POST", "/checkout", """{"ticketId":"{unknown}","quantity":"1"}""", HttpStatusCode.BadRequest)]
     [InlineData("POST", "/checkout", """{"ticketId":"{unknown}","quantity":0}""", HttpStatusCode.BadRequest)]
     [InlineData("POST", "/checkout", """{"ticketId":"{unknown}","quantity":3}""", HttpStatusCode.BadRequest)]

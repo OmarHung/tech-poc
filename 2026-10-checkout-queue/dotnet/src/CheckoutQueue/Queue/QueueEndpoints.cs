@@ -27,6 +27,8 @@ public static partial class QueueEndpoints
             return ticket is null ? throw ApiException.NotFound("ticket_not_found", "ticket not found") : Results.Ok(ticket);
         });
 
+        app.MapGet("/queue/tickets/{ticketId}/events", TicketEvents.StreamAsync);
+
         return app;
     }
 

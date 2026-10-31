@@ -1,3 +1,4 @@
+using CheckoutQueue.Maintenance;
 using CheckoutQueue.Queue;
 using CheckoutQueue.Redis;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,7 +20,7 @@ public sealed class MaintenanceWorkerTests(RedisFixture redis)
             .AddCheckoutQueue(config, redis.Connection, time)
             .BuildServiceProvider();
         await services.GetRequiredService<SaleRedis>().InitializeAsync(config.InitialStock);
-        var worker = services.GetServices<IHostedService>().Single();
+        var worker = services.GetServices<IHostedService>().OfType<SaleMaintenanceWorker>().Single();
         var queue = services.GetRequiredService<QueueStore>();
         var ticket = (await queue.JoinAsync("alice")).Ticket!;
 

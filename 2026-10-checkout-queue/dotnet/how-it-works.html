@@ -121,7 +121,7 @@
     <div class="card app">
       <h3>CheckoutQueue（HTTP 端點）</h3>
       <div class="port">127.0.0.1:8090（<code>PORT</code>，驗證時開 8091、8092 兩台）</div>
-      <p>收使用者的請求：排隊、輪詢、下單、付款。先檢查輸入格式，再呼叫對應的 Lua 腳本，最後把腳本的結果翻成 HTTP 狀態碼。根目錄 <code>/</code> 另外附一個操作頁，可以用滑鼠模擬一群顧客。</p>
+      <p>收使用者的請求：排隊、輪詢、下單、付款。先檢查輸入格式，再呼叫對應的 Lua 腳本，最後把腳本的結果翻成 HTTP 狀態碼。排隊狀態除了輪詢，也可以連 <code>/queue/tickets/{id}/events</code> 改由伺服器推送（SSE）。根目錄 <code>/</code> 另外附一個操作頁，可以用滑鼠模擬一群顧客。</p>
     </div>
     <div class="card app">
       <h3>定時任務（每台都有）</h3>
@@ -148,6 +148,7 @@
 │   ├── Redis/SaleRedis.cs          執行腳本、解析回覆（ScriptReply）
 │   ├── Redis/SaleScripts.cs        從組件內嵌資源載入腳本
 │   ├── Queue/                      排隊、輪詢、放行：QueueEndpoints、QueueStore、TicketView
+│   │                               SSE 推送：TicketEvents（端點）、TicketStreams、TicketPushWorker
 │   ├── Orders/                     下單、付款、釋放：OrderEndpoints、OrderStore、OrderView
 │   ├── Maintenance/                SaleMaintenance（一輪工作）、SaleMaintenanceWorker（計時器）
 │   ├── Admin/AuditStore.cs         對帳：從訂單本身重新加總
@@ -155,7 +156,7 @@
 │   ├── Admin/TicketBoardStore.cs   /admin/tickets：每位顧客目前的號碼牌和訂單（唯讀，不算心跳）
 │   ├── Demo/index.html、DemoPage.cs 操作頁：內嵌在組件裡，由 / 提供，每次請求產生新的 CSP nonce
 │   └── Http/                       錯誤格式、X-Served-By、嚴格 JSON 解析
-└── tests/CheckoutQueue.Tests/      80 個測試：Testcontainers 起真的 Redis，用假時鐘</pre>
+└── tests/CheckoutQueue.Tests/      85 個測試：Testcontainers 起真的 Redis，用假時鐘</pre>
 </section>
 
 <section id="flow-section">
@@ -164,6 +165,7 @@
   <div class="phase-buttons" role="group" aria-label="選擇情境">
     <button type="button" data-phase-btn="join" aria-pressed="true">排隊取號</button>
     <button type="button" data-phase-btn="poll" aria-pressed="false">輪詢等待</button>
+    <button type="button" data-phase-btn="sse" aria-pressed="false">改用 SSE 推送</button>
     <button type="button" data-phase-btn="admit" aria-pressed="false">放行</button>
     <button type="button" data-phase-btn="checkout" aria-pressed="false">下單扣庫存</button>
     <button type="button" data-phase-btn="double" aria-pressed="false">連點結帳，打到兩台</button>
@@ -244,6 +246,11 @@
       <text class="script" x="377" y="155" data-label="k-0"></text>
       <text class="script" x="377" y="307" data-label="e-1"></text>
       <text class="script" x="377" y="365" data-label="k-1"></text>
+      <path class="edge" data-edge="pub-0" d="M438 132 H332"/>
+      <path class="edge" data-edge="pub-1" d="M438 342 H332"/>
+      <path class="edge" data-edge="s-1" d="M162 325 C 140 325, 132 252, 118 246"/>
+      <text class="script" x="385" y="127" data-label="pub-0"></text>
+      <text class="script" x="385" y="337" data-label="pub-1"></text>
 
       <path class="edge" data-edge="t-admit" d="M581 140 V186"/>
       <text class="edge-label start" x="589" y="168">放行</text>
@@ -276,6 +283,16 @@
         <dt>心跳</dt><dd>輪詢就是心跳。之後放行時，<code>lastSeenAt</code> 太舊的人會被跳過（見「排隊中離開」）。</dd>
         <dt>打到另一台</dt><dd>這次請求打到 instance-1，結果跟打 instance-0 完全一樣，因為 instance 本身不存狀態。</dd>
         <dt>預估等待</dt><dd><code>TicketView.From()</code> 用「前面人數 ÷ 最近 10 秒的放行速度」算出 <code>estimatedWaitSeconds</code>。速度太低（每秒不到 0.01 人）時不給預估。</dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="sse" hidden>
+      <h3>改用 SSE 推送：<code>GET /queue/tickets/{ticketId}/events</code></h3>
+      <dl>
+        <dt>連上時</dt><dd><code>TicketEvents.StreamAsync()</code> 先在 <code>TicketStreams</code> 登記這條串流，再送一次目前狀態。之後不用再問，有變化伺服器會推。</dd>
+        <dt>放行那一刻</dt><dd>instance-0 的定時任務跑 <code>admit.lua</code>，放行的同時 <code>PUBLISH</code> 被放行的 ticket。兩台都有訂閱；這位使用者的串流連在 instance-1，所以由 instance-1 的 <code>TicketPushWorker</code> 推給他。實測放行到使用者知道 p50 3 ms，polling 是 480 ms。</dd>
+        <dt>順位</dt><dd>每台每秒用一支批次腳本 <code>watch.lua</code> 取回所有連線者的狀態，順位有變才推，推送頻率不會超過 polling。</dd>
+        <dt>心跳</dt><dd>串流開著就算在線上：<code>watch.lua</code> 順便更新 <code>lastSeenAt</code>。關掉分頁，串流斷了，心跳就停。</dd>
+        <dt>負載</dt><dd>同樣 1000 人，打到 app 的請求從每秒 931 次降到 9 次，app CPU 從 57.8% 降到 17.3%；名額回收得快，每秒放行人數從 4.7 變成 9.2。</dd>
       </dl>
     </div>
     <div class="panel" data-panel="admit" hidden>
@@ -399,6 +416,7 @@ return reply('created', ticket_view(newId, now))</pre>
       <div class="who">輪詢：更新心跳、回報順位</div>
       <div class="where"><code>QueueStore.GetTicketAsync()</code> → <code>Redis/Scripts/ticket.lua</code> → <code>Queue/TicketView.cs</code> 的 <code>TicketView.From()</code></div>
       <p>腳本更新 <code>lastSeenAt</code>，回傳 ticket 的狀態、順位（<code>ZRANK</code> ＋ 1）和最近的放行速度 <code>admitRate</code>。<code>TicketView.From()</code> 用它們算出預估等待秒數，再加上 <code>pollAfterMs</code>。</p>
+      <p>改用 SSE 時，客戶端連 <code>/queue/tickets/{ticketId}/events</code>（<code>Queue/TicketEvents.cs</code> 的 <code>StreamAsync()</code>），之後由 <code>Queue/TicketPushWorker.cs</code> 推送：放行靠 Redis pub/sub 即時推，順位每秒用 <code>QueueStore.WatchAsync()</code>（<code>watch.lua</code>）批次更新一次。</p>
     </li>
     <li style="--c: var(--mono)">
       <div class="who">定時任務：先釋放、再放行</div>
@@ -408,6 +426,7 @@ return reply('created', ticket_view(newId, now))</pre>
 local free = math.min(maxActive, stock()) - redis.call('ZCARD', key('active'))
 local inLine = redis.call('ZCARD', key('waiting'))
 local admitted, abandoned, scanned = 0, 0, 0
+local admittedIds = {}
 while admitted &lt; free and scanned &lt; maxScan do
   local head = redis.call('ZPOPMIN', key('waiting'))
   if #head == 0 then break end
@@ -422,8 +441,12 @@ while admitted &lt; free and scanned &lt; maxScan do
     redis.call('HSET', ticketKey, 'status', 'admitted', 'admittedAt', now, 'admissionExpiresAt', deadline)
     redis.call('ZADD', key('active'), deadline, id)
     admitted = admitted + 1
+    admittedIds[admitted] = id
   end
-end</pre>
+end
+
+<span class="c">-- 告訴每台 instance 誰剛被放行，連著 SSE 的人馬上就能收到</span>
+if admitted &gt; 0 then redis.call('PUBLISH', key('admitted'), table.concat(admittedIds, ' ')) end</pre>
     </li>
     <li style="--c: var(--gw)">
       <div class="who">下單：檢查數量，呼叫腳本</div>
@@ -523,7 +546,7 @@ return reply('paid', order_view(id, now))</pre>
     </div>
     <div class="card app">
       <h3>4. 掛上端點、開始計時</h3>
-      <p><code>MapCheckoutQueue()</code> 掛上 <code>X-Served-By</code>、錯誤處理、<code>/health</code>、排隊和訂單端點、<code>/admin/audit</code>、<code>/admin/config</code>、<code>/admin/tickets</code>，以及操作頁 <code>/</code>（<code>MapDemoPage()</code>）。<code>app.Run()</code> 之後開始聽 127.0.0.1，定時任務也開始跑。</p>
+      <p><code>MapCheckoutQueue()</code> 掛上 <code>X-Served-By</code>、錯誤處理、<code>/health</code>、排隊和訂單端點、<code>/admin/audit</code>、<code>/admin/config</code>、<code>/admin/tickets</code>，以及操作頁 <code>/</code>（<code>MapDemoPage()</code>）。推送服務 <code>TicketPushWorker</code> 在開始接請求之前就訂閱好放行通知，不會漏掉。<code>app.Run()</code> 之後開始聽 127.0.0.1，定時任務也開始跑。</p>
     </div>
   </div>
 <pre><span class="c">// src/CheckoutQueue/Program.cs</span>
@@ -576,6 +599,7 @@ end</pre>
       <tr><td>Redis 斷線不是 500</td><td>Redis 例外一律回 503 <code>unavailable</code>，客戶端知道要重試而不是放棄；定時任務只記警告，下一輪重試</td><td><code>UseApiErrors()</code>、<code>SaleMaintenanceWorker</code></td></tr>
       <tr><td>只聽本機</td><td>只綁 127.0.0.1；<code>/admin/audit</code>、<code>/admin/config</code>、<code>/admin/tickets</code> 沒有驗證，只給 PoC 驗證用</td><td><code>Program.cs</code>、<code>CheckoutQueueHosting.cs</code></td></tr>
       <tr><td>操作頁不能被塞進別的程式碼</td><td>每次請求產生新的 nonce，CSP 只允許帶這個 nonce 的 script 和 style，也只允許呼叫自己這台；顧客名稱等資料一律用 <code>textContent</code> 放進畫面</td><td><code>Demo/DemoPage.cs</code>、<code>Demo/index.html</code></td></tr>
+      <tr><td>放行用推的，順位每秒更新</td><td>SSE 串流只在放行時即時推（pub/sub），順位和預估每秒批次更新一次，推送頻率不超過 polling。pub/sub 漏掉訊息時，最晚下一秒的批次更新補上；15 秒沒東西送就送一行註解保活</td><td><code>admit.lua</code>、<code>watch.lua</code>、<code>TicketPushWorker</code>、<code>TicketEvents</code></td></tr>
       <tr><td>每個分頁看到同一條隊伍</td><td>操作頁每秒向自己這台拿 <code>/admin/tickets</code>，通道只從這份資料畫，所以兩台、兩個分頁看到的一樣，也會記下同樣的事件。這個端點唯讀、不算心跳，旁觀的人不會幫顧客續命；心跳只由建立顧客的那個分頁送</td><td><code>tickets.lua</code>、<code>TicketBoardStore.ListAsync()</code>、<code>Demo/index.html</code></td></tr>
       <tr><td>操作頁只打自己這台</td><td>從 :8092 的分頁對 :8091 加入的顧客下單，請求就打到 :8092，剛好示範跨 instance；不需要開跨網域（CORS）</td><td><code>Demo/index.html</code></td></tr>
     </tbody>
@@ -586,7 +610,7 @@ end</pre>
   <h2>6. 怎麼跑</h2>
 <pre><span class="c"># 在 dotnet/ 底下</span>
 ./run.sh build                     <span class="c"># dotnet build -c Release</span>
-./run.sh test                      <span class="c"># 80 個測試；需要 Docker（Testcontainers 會起 Redis）</span>
+./run.sh test                      <span class="c"># 85 個測試；需要 Docker（Testcontainers 會起 Redis）</span>
 
 <span class="c"># 手動啟動：先起 Redis，再開兩台 instance（兩個終端機）</span>
 docker run -d --rm --name checkout-queue-redis -p 127.0.0.1:6379:6379 redis:7.4-alpine
@@ -599,11 +623,12 @@ curl -s http://127.0.0.1:8092/queue/tickets/&lt;ticketId&gt;
 curl -s -X POST http://127.0.0.1:8091/checkout -H 'Content-Type: application/json' -d '{"ticketId":"&lt;ticketId&gt;","quantity":1}'
 curl -s -X POST http://127.0.0.1:8092/orders/&lt;orderId&gt;/pay
 curl -s http://127.0.0.1:8091/admin/audit
+curl -N http://127.0.0.1:8092/queue/tickets/&lt;ticketId&gt;/events   <span class="c"># 改用 SSE：一直開著，有變化就印出新的一行</span>
 
 <span class="c"># 或用操作頁：兩個分頁分別打開兩台，加顧客、點下單和付款</span>
 open http://127.0.0.1:8091/ http://127.0.0.1:8092/
 
-<span class="c"># 或者一次跑完自動驗證（在 PoC 根目錄）：起 Redis 容器 ＋ 兩台 instance，跑搶購情境和吞吐量</span>
+<span class="c"># 或者一次跑完自動驗證（在 PoC 根目錄）：起 Redis 容器 ＋ 兩台 instance，跑搶購情境、吞吐量、polling 與 SSE 對照</span>
 ../verify/run.sh dotnet</pre>
 
   <table>
@@ -619,7 +644,7 @@ open http://127.0.0.1:8091/ http://127.0.0.1:8092/
       <tr><td><code>ADMISSION_WINDOW_MS</code></td><td>120000</td><td>放行後多久內要下單</td></tr>
       <tr><td><code>PAYMENT_WINDOW_MS</code></td><td>300000</td><td>下單後多久內要付款</td></tr>
       <tr><td><code>HEARTBEAT_TIMEOUT_MS</code></td><td>15000</td><td>多久沒輪詢算離開；至少要是 <code>POLL_INTERVAL_MS</code> 的 3 倍</td></tr>
-      <tr><td><code>POLL_INTERVAL_MS</code></td><td>1000</td><td>回應裡的 <code>pollAfterMs</code></td></tr>
+      <tr><td><code>POLL_INTERVAL_MS</code></td><td>1000</td><td>回應裡的 <code>pollAfterMs</code>；SSE 也用它決定多久批次更新一次順位</td></tr>
       <tr><td><code>TICK_MS</code></td><td>200</td><td>定時任務間隔</td></tr>
     </tbody>
   </table>
@@ -641,6 +666,11 @@ open http://127.0.0.1:8091/ http://127.0.0.1:8092/
       on: ["c-1", "e-1"], fail: [], hot: ["waiting"],
       labels: { "e-1": "ticket.lua" },
       roles: { waiting: "更新 lastSeenAt、算順位" },
+    },
+    sse: {
+      on: ["k-0", "t-admit", "pub-0", "pub-1", "s-1"], fail: [], hot: ["waiting", "active"],
+      labels: { "k-0": "admit.lua", "pub-0": "PUBLISH", "pub-1": "PUBLISH" },
+      roles: { waiting: "從隊頭取出", active: "放行，同時廣播" },
     },
     admit: {
       on: ["k-0", "k-1", "t-admit"], fail: [], hot: ["waiting", "active", "stock"],

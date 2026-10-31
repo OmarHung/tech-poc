@@ -31,6 +31,8 @@ public static class CheckoutQueueHosting
         services.AddSingleton<AuditStore>();
         services.AddSingleton<TicketBoardStore>();
         services.AddSingleton<SaleMaintenance>();
+        services.AddSingleton<TicketStreams>();
+        services.AddHostedService<TicketPushWorker>();
         if (runMaintenance)
         {
             services.AddHostedService<SaleMaintenanceWorker>();

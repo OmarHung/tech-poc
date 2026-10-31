@@ -7,7 +7,7 @@
 | PoC | 主題 | 狀態 | 結論 |
 |-----|------|------|------|
 | [2026-10-modular-monolith-to-microservices](./2026-10-modular-monolith-to-microservices/) | 模組化單體轉微服務（.NET / Python / Rust） | 已完成 | 有條件可行：起點要是模組化單體，並補上跨服務一致性與資料搬遷 |
-| [2026-10-checkout-queue](./2026-10-checkout-queue/) | 結帳排隊機制 | 進行中 | — |
+| [2026-10-checkout-queue](./2026-10-checkout-queue/) | 結帳排隊機制（.NET） | 已完成 | 有條件可行：虛擬等候室＋Redis Lua 能做到不超賣、不重複扣款；一場活動受單一 Redis 執行緒限制（約每秒 9 萬次腳本），前面要有負載平衡器接住大量新連線 |
 | [2026-10-dual-node-failover](./2026-10-dual-node-failover/) | 雙機備援機制（.NET 版完成） | 進行中 | 有條件可行：要有第三方仲裁（witness），而且要同步複寫才能不丟資料 |
 | [2026-10-cap-theorem](./2026-10-cap-theorem/) | CAP 定理範例（.NET / Python / Rust），並用 etcd、Cassandra 對照 | 已完成 | 有條件可行：選 CP 要至少 3 票，寫入逾時要當成結果未知；選 AP 要不丟資料，就不能用 last-write-wins，要改用 version vector 或 CRDT |
 | [2026-10-solid-principles](./2026-10-solid-principles/) | SOLID 原則範例（.NET / Python / Rust） | 已完成 | 有條件可行：五個原則防的問題都跑得出來，但每個都要多付型別；只在那個方向真的會變時才划算 |

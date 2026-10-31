@@ -15,6 +15,7 @@ public static class SaleScripts
     public static readonly SaleScript ExpireOrders = Load("expire_orders");
     public static readonly SaleScript Audit = Load("audit");
     public static readonly SaleScript Tickets = Load("tickets");
+    public static readonly SaleScript Watch = Load("watch");
 
     private static SaleScript Load(string name) => new(name, Read("common") + "\n" + Read(name));
 
