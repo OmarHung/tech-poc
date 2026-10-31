@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>.NET 版運作說明｜CAP 定理範例</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --fg: #1d232b; --muted: #5d6773; --line: #d8dde3; --card: #ffffff; --code-bg: #f0f2f5;
+    --flow: #2563eb; --flow-ink: #ffffff; --fail: #d64545; --idle: #b9c0c8;
+    --tool: #6d5bd0; --major: #0f8b8d; --minor: #b86e0b; --warn-bg: #fff4dc; --warn-fg: #8a5300;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a; --fg: #e4e7eb; --muted: #9aa4b0; --line: #2d333b; --card: #1a1f26; --code-bg: #20262e;
+      --flow: #6ea0ff; --flow-ink: #0b1220; --fail: #ff7272; --idle: #4a525c;
+      --tool: #a596ff; --major: #4cc7c9; --minor: #f0a948; --warn-bg: #3a2c12; --warn-fg: #f5c46b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); line-height: 1.7;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 1.9rem; line-height: 1.3; margin: 0 0 8px; }
+  h2 { font-size: 1.35rem; margin: 56px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 20px 0 8px; }
+  p { margin: 8px 0; }
+  a { color: var(--flow); }
+  .lead { color: var(--muted); font-size: 1.05rem; margin: 0; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 0; }
+  nav.toc a { text-decoration: none; font-size: .9rem; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--fg); background: var(--card); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .86em; }
+  :not(pre) > code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; line-height: 1.55; margin: 10px 0; }
+  pre .c { color: var(--muted); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 16px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; border-top: 4px solid var(--c, var(--line)); }
+  .card h3 { margin: 0 0 4px; }
+  .card .port { color: var(--muted); font-size: .85rem; }
+  .card p { font-size: .93rem; }
+  .tool { --c: var(--tool); } .major { --c: var(--major); } .minor { --c: var(--minor); }
+  .tree { background: var(--card); border: 1px solid var(--line); }
+  .tree .hl { background: var(--warn-bg); color: var(--warn-fg); border-radius: 3px; }
+  .note { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; padding: 10px 14px; font-size: .93rem; margin: 12px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: .92rem; background: var(--card); }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+  th { background: var(--code-bg); font-weight: 600; }
+
+  /* interactive flow */
+  .phase-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .phase-buttons button {
+    font: inherit; font-size: .92rem; cursor: pointer; padding: 6px 14px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--card); color: var(--fg);
+  }
+  .phase-buttons button:hover { border-color: var(--flow); }
+  .phase-buttons button:focus-visible { outline: 3px solid var(--flow); outline-offset: 2px; }
+  .phase-buttons button[aria-pressed="true"] { background: var(--flow); border-color: var(--flow); color: var(--flow-ink); font-weight: 600; }
+  .flow-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  #flow { width: 100%; height: auto; display: block; }
+  #flow text { fill: var(--fg); font-size: 13px; text-anchor: middle; }
+  #flow text.small { font-size: 11.5px; fill: var(--muted); }
+  #flow text.title { font-weight: 700; font-size: 14px; }
+  #flow text.value { font-size: 20px; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  #flow .node rect { fill: var(--card); stroke: var(--c); stroke-width: 2; rx: 8; }
+  #flow .node.major { --c: var(--major); } #flow .node.minor { --c: var(--minor); } #flow .node.plain { --c: var(--idle); }
+  #flow .node.dim { opacity: .35; }
+  #flow .gone { display: none; }
+  #flow .node.down rect { stroke: var(--fail); fill: var(--warn-bg); }
+  #flow .down-label { display: none; fill: var(--fail); font-weight: 700; }
+  #flow .node.down .down-label { display: inline; }
+  #flow path.edge { fill: none; stroke: var(--idle); stroke-width: 2; opacity: .45; marker-end: url(#arrow-idle); }
+  #flow path.edge.on { stroke: var(--flow); opacity: 1; stroke-width: 2.6; stroke-dasharray: 7 5; animation: dash 1s linear infinite; marker-end: url(#arrow-on); }
+  #flow path.edge.fail { stroke: var(--fail); opacity: 1; stroke-width: 2.6; stroke-dasharray: 3 5; marker-end: url(#arrow-fail); }
+  #flow .cut { display: none; }
+  #flow .cut.show { display: inline; }
+  #flow .cut line { stroke: var(--fail); stroke-width: 3; stroke-dasharray: 10 7; }
+  #flow .cut text { fill: var(--fail); font-weight: 700; font-size: 12px; text-anchor: start; }
+  @keyframes dash { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { #flow path.edge.on { animation: none; } }
+  .panel { margin-top: 12px; }
+  .panel dl { display: grid; grid-template-columns: 7.5em 1fr; gap: 6px 14px; margin: 8px 0; }
+  .panel dt { color: var(--muted); }
+  .panel dd { margin: 0; }
+
+  /* step timeline */
+  ol.steps { list-style: none; padding: 0; margin: 16px 0; counter-reset: step; }
+  ol.steps > li { position: relative; padding: 0 0 18px 46px; counter-increment: step; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--c, var(--flow)); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: .9rem;
+  }
+  ol.steps > li::after { content: ""; position: absolute; left: 14px; top: 32px; bottom: 2px; width: 2px; background: var(--line); }
+  ol.steps > li:last-child::after { display: none; }
+  ol.steps .where { font-size: .85rem; color: var(--muted); }
+  ol.steps .who { font-weight: 600; }
+  details { margin: 6px 0; }
+  details summary { cursor: pointer; color: var(--flow); font-size: .9rem; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  footer { margin-top: 64px; color: var(--muted); font-size: .88rem; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>CAP 定理範例｜.NET 版運作說明</h1>
+  <p class="lead">這頁說明 <code>dotnet/</code> 裡的程式怎麼運作：怎麼在單一程序裡模擬 3 台節點和網路分區，CP 和 AP 兩種模式在分區、恢復時各發生什麼事。用 .NET 10（C#）寫成，範例只用 BCL 的 <code>System.Collections.Immutable</code>，測試用 xUnit 2.9.3 ＋ coverlet.collector 6.0.4。</p>
+  <nav class="toc" aria-label="目錄">
+    <a href="#overview">1. 全貌</a>
+    <a href="#flow-section">2. 互動流程圖</a>
+    <a href="#journey">3. 一筆寫入的旅程</a>
+    <a href="#startup">4. 啟動時發生什麼</a>
+    <a href="#design">5. 關鍵設計</a>
+    <a href="#run">6. 怎麼跑</a>
+  </nav>
+</header>
+
+<section id="overview">
+  <h2>1. 全貌：一個模擬、一支示範程式、一組測試</h2>
+  <p>這份實作<strong>沒有真的網路，也不開任何 port</strong>。3 台節點 A、B、C 只是記憶體裡的資料，「網路分區」用「節點分組」表示：同一組內可以互相連線，跨組連不到。這樣每次跑的結果都一樣，不會被真實網路的抖動干擾。</p>
+  <div class="cards">
+    <div class="card major">
+      <h3>Cluster.cs</h3>
+      <div class="port">模擬本體 ・ 被 Program.cs 和測試使用</div>
+      <p><code>Cluster</code> record 和五個操作：<code>Cluster.Create()</code> 建立、<code>Partition()</code> 切斷網路、<code>Write()</code> 寫入、<code>Read()</code> 讀取、<code>Heal()</code> 恢復並合併。每個操作都回傳新的叢集（<code>Write()</code>、<code>Heal()</code> 用 tuple 連同結果一起回傳），舊的不變。</p>
+    </div>
+    <div class="card tool">
+      <h3>Program.cs</h3>
+      <div class="port">示範程式（top-level statements）・ <code>./run.sh demo</code></div>
+      <p>依序跑三個情境：3 台 CP、3 台 AP、只有 2 台的 CP，把每一步的結果印出來。三種語言版本的輸出逐字相同。</p>
+    </div>
+    <div class="card minor">
+      <h3>ClusterTests.cs</h3>
+      <div class="port">14 個測試 ・ <code>./run.sh test</code></div>
+      <p>README 的每一條成功標準都對應一個測試：CP 少數派被拒、AP 兩側分歧、LWW 合併丟掉已確認的寫入、2 台 CP 全停擺等。</p>
+    </div>
+  </div>
+
+  <h3>資料長什麼樣子</h3>
+  <table>
+    <thead><tr><th>型別</th><th>成員</th><th>說明</th></tr></thead>
+    <tbody>
+      <tr><td><code>Mode</code>（enum，<code>Mode.cs</code>）</td><td><code>CP</code>、<code>AP</code></td><td>整份程式只有一個地方看這個值：<code>RejectWithoutQuorum()</code></td></tr>
+      <tr><td><code>Version</code>（sealed record，<code>Version.cs</code>）</td><td><code>Value</code>、<code>Timestamp</code>、<code>Origin</code></td><td>一筆寫入。<code>Timestamp</code> 是全域邏輯時鐘，恢復時用來決定誰贏；<code>Origin</code> 是接受寫入的節點</td></tr>
+      <tr><td><code>Result</code>（sealed record，<code>Result.cs</code>）</td><td><code>Ok</code>、<code>Value</code>、<code>Reason</code></td><td>讀寫的結果。被拒絕時 <code>Ok</code> 是 <code>false</code>，<code>Reason</code> 說明原因</td></tr>
+      <tr><td><code>Cluster</code>（sealed record，<code>Cluster.cs</code>）</td><td><code>Mode</code>、<code>Nodes</code>、<code>Stores</code>、<code>Groups</code>、<code>Clock</code>、<code>PartitionedAt</code>，以及算出來的 <code>Quorum</code></td><td><code>Stores</code> 是「節點 → (key → 版本)」；<code>Groups</code> 是目前連得到彼此的分組；<code>PartitionedAt</code> 是分區發生時的時鐘</td></tr>
+    </tbody>
+  </table>
+
+  <h3>資料夾結構</h3>
+<pre class="tree">dotnet/
+├── CapTheorem.slnx                  方案：src/ 和 tests/ 各一個專案
+├── Directory.Build.props            TreatWarningsAsErrors：警告一律當錯誤
+├── run.sh                           ./run.sh demo | test
+├── src/CapTheorem/
+│   ├── CapTheorem.csproj            主控台程式（net10.0），沒有任何 NuGet 套件
+│   ├── Cluster.cs                   模擬本體：Create、Partition、Write、Read、Heal
+│   ├── Mode.cs、Version.cs、Result.cs  三個小型別，一個檔案一個
+│   └── Program.cs                   示範程式：依序跑三個情境並印出結果
+├── tests/CapTheorem.Tests/
+│   ├── CapTheorem.Tests.csproj      xUnit 2.9.3、coverlet.collector 6.0.4
+│   └── ClusterTests.cs              14 個測試
+<span class="hl">└── how-it-works.html                就是這一頁</span></pre>
+</section>
+
+<section id="flow-section">
+  <h2>2. 互動流程圖：分區前、分區中、恢復後</h2>
+  <p>點下面的按鈕切換情境。藍色虛線是寫入或複製實際走的路徑，紅色是被擋下的路徑，紅色長虛線是網路斷掉的位置。節點方框裡是那一台目前 <code>x</code> 的值。情境順序跟 <code>Program.cs</code> 一樣。</p>
+  <div class="phase-buttons" role="group" aria-label="選擇情境">
+    <button type="button" data-phase-btn="normal" aria-pressed="true">正常：沒有分區</button>
+    <button type="button" data-phase-btn="cp-split" aria-pressed="false">CP：分區中</button>
+    <button type="button" data-phase-btn="cp-heal" aria-pressed="false">CP：恢復後</button>
+    <button type="button" data-phase-btn="ap-split" aria-pressed="false">AP：分區中</button>
+    <button type="button" data-phase-btn="ap-heal" aria-pressed="false">AP：恢復後</button>
+    <button type="button" data-phase-btn="two" aria-pressed="false">延伸：只有 2 台的 CP</button>
+  </div>
+
+  <div class="flow-wrap">
+    <svg id="flow" viewBox="0 0 960 400" role="img" aria-labelledby="flow-title flow-desc">
+      <title id="flow-title">寫入與複製流程圖</title>
+      <desc id="flow-desc">client1 連到節點 A，client2 連到節點 C。A 和 B 在網路分區的同一側，C 在另一側。寫入會複製到同一側的節點；恢復時用 last-write-wins 合併。只有 2 台的情境中，A 和 B 被切開，client2 改連 B。</desc>
+      <defs>
+        <marker id="arrow-idle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--idle)"/></marker>
+        <marker id="arrow-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--flow)"/></marker>
+        <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--fail)"/></marker>
+      </defs>
+
+      <g class="node plain" data-node="client1"><rect x="16" y="82" width="110" height="56"/><text x="71" y="115">client1</text></g>
+      <g class="node plain" data-node="client2"><rect x="834" y="20" width="110" height="56"/><text x="889" y="53">client2</text></g>
+
+      <g class="node major" data-node="A">
+        <rect x="180" y="40" width="230" height="130"/>
+        <text class="title" x="295" y="68">節點 A</text>
+        <text class="value" x="295" y="104" data-value="A">x = 1</text>
+        <text class="small" x="295" y="130" data-note="A"></text>
+        <text class="down-label" x="295" y="156">✕ 拒絕服務</text>
+      </g>
+      <g class="node major" data-node="B">
+        <rect x="180" y="240" width="230" height="130"/>
+        <text class="title" x="295" y="268">節點 B</text>
+        <text class="value" x="295" y="304" data-value="B">x = 1</text>
+        <text class="small" x="295" y="330" data-note="B"></text>
+        <text class="down-label" x="295" y="356">✕ 拒絕服務</text>
+      </g>
+      <g class="node minor" data-node="C">
+        <rect x="560" y="140" width="230" height="130"/>
+        <text class="title" x="675" y="168">節點 C</text>
+        <text class="value" x="675" y="204" data-value="C">x = 1</text>
+        <text class="small" x="675" y="230" data-note="C"></text>
+        <text class="down-label" x="675" y="256">✕ 拒絕服務</text>
+      </g>
+
+      <g class="cut" data-cut="v"><line x1="485" y1="14" x2="485" y2="388"/><text x="492" y="28">網路分區</text></g>
+      <g class="cut" data-cut="h"><line x1="150" y1="205" x2="440" y2="205"/><text x="446" y="209">網路分區</text></g>
+
+      <!-- edges are drawn after the boxes so the box fills never hide them -->
+      <path class="edge" data-edge="c1-a" d="M126 110 H178"/>
+      <path class="edge" data-edge="c2-c" d="M889 76 V205 H792"/>
+      <path class="edge" data-edge="c2-b" d="M924 76 V330 H412"/>
+      <path class="edge" data-edge="a-b" d="M295 170 V238"/>
+      <path class="edge" data-edge="a-c" d="M410 80 C 490 80, 500 165, 558 165"/>
+      <path class="edge" data-edge="c-a" d="M558 225 C 500 225, 470 140, 412 140"/>
+      <path class="edge" data-edge="c-b" d="M558 250 C 500 250, 470 300, 412 300"/>
+    </svg>
+
+    <div class="panel" data-panel="normal">
+      <h3>正常：沒有分區（CP、AP 都一樣）</h3>
+      <dl>
+        <dt>呼叫</dt><dd><code>cluster.Write("A", "x", "1")</code></dd>
+        <dt>結果</dt><dd>成功。A、B、C 都有 <code>x=1</code>（時間戳 1）。</dd>
+        <dt>為什麼</dt><dd>沒有分區時只有一個分組，3 台都連得到。<code>Write()</code> 把新版本放進同組每一台的 store。這時 CP 和 AP 的行為完全一樣，差別只在網路斷掉之後。</dd>
+        <dt>模擬的簡化</dt><dd>同組內的複製是瞬間完成的。真實系統複製要花時間，AP 系統通常是非同步複製。</dd>
+        <dt>對應測試</dt><dd><code>Write_ReturnsNewCluster_WithoutChangingTheOriginal</code></dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="cp-split" hidden>
+      <h3>CP：分區中，少數派那側停止服務</h3>
+      <dl>
+        <dt>呼叫</dt><dd><code>cluster.Partition(["A", "B"], ["C"])</code> → <code>cluster.Write("A", "x", "2")</code> → <code>cluster.Write("C", "x", "3")</code> → <code>cluster.Read("C", "x")</code></dd>
+        <dt>結果</dt><dd>A 寫入成功，複製到 B。C 的寫入和讀取都回 <code>Result(Ok: false, Reason: "只連得到 1 台，需要 2 台才過半")</code>。</dd>
+        <dt>為什麼</dt><dd><code>RejectWithoutQuorum()</code> 比較「同組有幾台」和 <code>Quorum</code>（3 台要 2 台）。{A, B} 有 2 台，過半；{C} 只有 1 台，不過半。</dd>
+        <dt>代價</dt><dd>C 那側完全不能用。但沒有人讀到舊資料，兩邊的資料也沒有分歧。</dd>
+        <dt>對應測試</dt><dd><code>Cp_MinoritySide_RejectsWritesAndReadsDuringPartition</code>、<code>Cp_MajoritySide_KeepsServingDuringPartition</code></dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="cp-heal" hidden>
+      <h3>CP：恢復後，C 追上進度，沒有遺失</h3>
+      <dl>
+        <dt>呼叫</dt><dd><code>cluster.Heal()</code></dd>
+        <dt>結果</dt><dd>三台都是 <code>x=2</code>，回傳的 <code>Lost</code> 是空的。</dd>
+        <dt>為什麼</dt><dd>合併時 <code>x</code> 有兩個版本：A、B 上的 <code>x=2</code>（時間戳 2）和 C 上的 <code>x=1</code>（時間戳 1）。<code>x=2</code> 比較新，勝出。<code>x=1</code> 在分區前（<code>PartitionedAt</code> = 1）就存在，輸掉只算「落後」，不算遺失。</dd>
+        <dt>對應測試</dt><dd><code>Cp_Heal_LosesNoAcknowledgedWrite</code></dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="ap-split" hidden>
+      <h3>AP：分區中，兩邊照常服務，但資料分歧</h3>
+      <dl>
+        <dt>呼叫</dt><dd>跟 CP 一樣：<code>cluster.Write("A", "x", "2")</code> → <code>cluster.Write("C", "x", "3")</code></dd>
+        <dt>結果</dt><dd>兩筆寫入都成功。<code>cluster.Read("A", "x")</code> 讀到 2，<code>cluster.Read("C", "x")</code> 讀到 3。</dd>
+        <dt>為什麼</dt><dd>AP 模式下 <code>RejectWithoutQuorum()</code> 直接放行。寫入只會複製給同組的節點，所以兩組各有各的值。</dd>
+        <dt>代價</dt><dd>同一個 key 在兩邊的值不一樣。在 C 寫入之前讀 C，會讀到分區前的舊值 1。</dd>
+        <dt>對應測試</dt><dd><code>Ap_BothSides_AcceptWritesDuringPartition</code>、<code>Ap_Reads_DivergeDuringPartition</code>、<code>Ap_MinoritySide_ReadsStaleValueDuringPartition</code></dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="ap-heal" hidden>
+      <h3>AP：恢復後，last-write-wins 默默丟掉一筆已確認的寫入</h3>
+      <dl>
+        <dt>呼叫</dt><dd><code>cluster.Heal()</code></dd>
+        <dt>結果</dt><dd>三台都是 <code>x=3</code>。回傳的 <code>Lost</code> 裡有 A 寫入的 <code>x=2</code>。</dd>
+        <dt>為什麼</dt><dd><code>x=2</code>（時間戳 2）和 <code>x=3</code>（時間戳 3）都是分區期間寫的，last-write-wins 選時間戳大的 <code>x=3</code>。<code>x=2</code> 的時間戳 2 大於 <code>PartitionedAt</code>（1），所以算遺失。</dd>
+        <dt>代價</dt><dd>client1 早就收到「寫入成功」，之後 <code>x=2</code> 被蓋掉，沒有任何通知。</dd>
+        <dt>對應測試</dt><dd><code>Ap_HealWithLastWriteWins_DropsAnAcknowledgedWrite</code></dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="two" hidden>
+      <h3>延伸：只有 2 台的 CP，分區時整個服務停擺</h3>
+      <dl>
+        <dt>呼叫</dt><dd><code>Cluster.Create(Mode.CP, "A", "B").Partition(["A"], ["B"])</code> → A、B 各寫一次</dd>
+        <dt>結果</dt><dd>兩邊都被拒絕：只連得到 1 台，需要 2 台才過半。</dd>
+        <dt>為什麼</dt><dd><code>Quorum</code> 是 <code>Nodes.Length / 2 + 1</code>，2 台需要 2 台。網路一斷，哪一邊都湊不到。</dd>
+        <dt>意義</dt><dd>雙機備援如果選 CP，就要加一個第三方仲裁（witness）湊出第三票，見<a href="../../2026-10-dual-node-failover/README.md">雙機備援 PoC</a>。</dd>
+        <dt>對應測試</dt><dd><code>Cp_WithTwoNodes_CannotServeOnEitherSideOfAPartition</code></dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section id="journey">
+  <h2>3. 一筆寫入的旅程</h2>
+  <p>以分區中「client1 在 A 寫 <code>x=2</code>」為例，也就是 <code>Program.cs</code> 裡的 <code>WriteAndShow(cluster, "A", "2", "分區")</code>。從呼叫到印出結果，經過這些程式碼：</p>
+  <ol class="steps">
+    <li style="--c: var(--tool)">
+      <div class="who">示範程式發出寫入</div>
+      <div class="where"><code>Program.cs</code> 的 <code>WriteAndShow()</code></div>
+      <p>呼叫 <code>cluster.Write()</code>，用 tuple 解構拿回<strong>新的</strong>叢集和結果，印出來後把新叢集回傳。被拒絕時 <code>Write()</code> 回傳的是原本那個叢集（<code>this</code>），所以照樣接回來用就好。</p>
+<pre>static Cluster WriteAndShow(Cluster cluster, string node, string value, string stage)
+{
+    var (next, result) = cluster.Write(node, "x", value);
+    Console.WriteLine($"  [{stage}] {node} 寫 x={value} → {(result.Ok ? "成功" : "拒絕：" + result.Reason)}");
+    return next;
+}</pre>
+    </li>
+    <li style="--c: var(--major)">
+      <div class="who">找出 A 連得到哪些節點</div>
+      <div class="where"><code>Cluster.cs</code> 的 <code>Write()</code> → <code>Reachable()</code></div>
+      <p>在 <code>Groups</code> 裡找出 A 所在的分組，這裡是包含 A、B 的 <code>ImmutableHashSet&lt;string&gt;</code>。節點名稱不存在時直接丟 <code>ArgumentException</code>。</p>
+<pre>private ImmutableHashSet&lt;string&gt; Reachable(string node) =&gt;
+    Groups.FirstOrDefault(group =&gt; group.Contains(node))
+    ?? throw new ArgumentException($"不存在的節點：{node}", nameof(node));</pre>
+    </li>
+    <li style="--c: var(--major)">
+      <div class="who">CP 檢查有沒有過半，AP 直接放行</div>
+      <div class="where"><code>Cluster.cs</code> 的 <code>Write()</code> 開頭 → <code>RejectWithoutQuorum()</code>、<code>Quorum</code></div>
+      <p>CP 模式下，{A, B} 有 2 台，<code>Quorum</code> 是 2，過半，<code>RejectWithoutQuorum()</code> 回傳 <code>null</code>，放行。如果是 C 寫入，{C} 只有 1 台，這裡會回傳拒絕的 <code>Result</code>，被 <code>is { } rejection</code> 接住，<code>Write()</code> 直接回傳 <code>(this, rejection)</code>，叢集原封不動。<strong>CP 和 AP 的差別只有這一個判斷。</strong></p>
+<pre>var peers = Reachable(node);
+if (RejectWithoutQuorum(peers) is { } rejection)
+{
+    return (this, rejection);
+}
+
+<span class="c">// ……</span>
+
+private Result? RejectWithoutQuorum(ImmutableHashSet&lt;string&gt; peers) =&gt;
+    Mode == Mode.AP || peers.Count &gt;= Quorum
+        ? null
+        : new Result(Ok: false, Reason: $"只連得到 {peers.Count} 台，需要 {Quorum} 台才過半");</pre>
+    </li>
+    <li style="--c: var(--major)">
+      <div class="who">產生新版本，複製給同組節點</div>
+      <div class="where"><code>Cluster.cs</code> 的 <code>Write()</code> 後半</div>
+      <p>時鐘加 1，建立 <code>new Version("2", 2, "A")</code>。用 <code>ToImmutableDictionary</code> 建立新的 <code>Stores</code>：同組的 A、B 用 <code>SetItem</code> 拿到「多了這筆」的新字典；C 在另一組，沿用原本的字典，所以 C 還是 <code>x=1</code>。最後用 <code>this with { ... }</code> 產生新的 <code>Cluster</code>，舊的不受影響。</p>
+<pre>var clock = Clock + 1;
+var version = new Version(value, clock, node);
+var stores = Stores.ToImmutableDictionary(
+    entry =&gt; entry.Key,
+    entry =&gt; peers.Contains(entry.Key) ? entry.Value.SetItem(key, version) : entry.Value);
+return (this with { Stores = stores, Clock = clock }, new Result(Ok: true));</pre>
+    </li>
+    <li style="--c: var(--tool)">
+      <div class="who">印出結果</div>
+      <div class="where"><code>Program.cs</code> 的 <code>WriteAndShow()</code> 裡的 <code>Console.WriteLine</code></div>
+      <p>印出 <code>  [分區] A 寫 x=2 → 成功</code>。被拒絕時印出 <code>拒絕：</code>加上 <code>Reason</code>。</p>
+    </li>
+    <li style="--c: var(--minor)">
+      <div class="who">網路恢復時合併</div>
+      <div class="where"><code>Cluster.cs</code> 的 <code>Heal()</code></div>
+      <p>把每個 key 在各節點上的不同版本收集起來，依時間由舊到新排好，最後一個（時間戳最大）勝出，寫回每一台。輸掉的版本如果是分區期間寫入的（時間戳大於 <code>PartitionedAt</code>），就放進 <code>Lost</code> 回傳。</p>
+      <details><summary>看 Heal() 的程式碼</summary>
+<pre>public (Cluster Cluster, ImmutableArray&lt;Version&gt; Lost) Heal()
+{
+    <span class="c">// 每個 key 在各節點上的不同版本，依時間由舊到新排好；最後一個就是 LWW 的贏家</span>
+    var candidates = Stores.Values
+        .SelectMany(store =&gt; store)
+        .GroupBy(entry =&gt; entry.Key, entry =&gt; entry.Value)
+        .OrderBy(group =&gt; group.Key, StringComparer.Ordinal)
+        .Select(group =&gt; (Key: group.Key, Versions: group.Distinct().OrderBy(v =&gt; v.Timestamp).ToImmutableArray()))
+        .ToImmutableArray();
+    var merged = candidates.ToImmutableDictionary(c =&gt; c.Key, c =&gt; c.Versions[^1]);
+
+    <span class="c">// 分區前就存在的舊版本輸掉只是「落後」，分區期間寫入的版本輸掉才是「遺失」。</span>
+    var since = PartitionedAt ?? Clock;
+    var lost = candidates
+        .SelectMany(c =&gt; c.Versions.SkipLast(1))
+        .Where(v =&gt; v.Timestamp &gt; since)
+        .ToImmutableArray();
+
+    var healed = this with
+    {
+        Stores = Nodes.ToImmutableDictionary(node =&gt; node, _ =&gt; merged),
+        Groups = [Nodes.ToImmutableHashSet()],
+        PartitionedAt = null,
+    };
+    return (healed, lost);
+}</pre>
+      </details>
+    </li>
+  </ol>
+
+  <h3>每種結果在哪一步決定</h3>
+  <table>
+    <thead><tr><th>狀況</th><th>在哪裡決定</th><th>結果</th></tr></thead>
+    <tbody>
+      <tr><td>節點名稱不存在</td><td>第 2 步 <code>Reachable()</code></td><td><code>ArgumentException</code></td></tr>
+      <tr><td>CP，連得到的節點沒過半</td><td>第 3 步 <code>RejectWithoutQuorum()</code></td><td><code>Result(Ok: false)</code>，回傳原本的叢集</td></tr>
+      <tr><td>AP，分區中</td><td>第 3 步直接放行</td><td>成功，但另一組看不到這筆寫入</td></tr>
+      <tr><td>分組沒有剛好涵蓋每個節點一次（漏掉、重複、不存在）</td><td><code>Partition()</code></td><td><code>ArgumentException</code></td></tr>
+      <tr><td>分區期間的寫入在恢復時輸給較新的版本</td><td>第 6 步 <code>Heal()</code></td><td>出現在回傳的 <code>Lost</code> 裡</td></tr>
+    </tbody>
+  </table>
+  <p class="note">模擬刻意簡化了兩件事：同組內的複製是瞬間完成的，以及時間戳來自一個全域邏輯時鐘。真實的 AP 系統常用各台機器自己的時間做 last-write-wins，時間不準時，「誰被丟掉」會更難預測。</p>
+</section>
+
+<section id="startup">
+  <h2>4. 啟動時發生什麼</h2>
+  <div class="cols">
+    <div class="card tool">
+      <h3>Program.cs</h3>
+      <p>top-level statements 依序呼叫 <code>RunThreeNodes(Mode.CP)</code>、<code>RunThreeNodes(Mode.AP)</code>、<code>RunTwoNodes()</code>。<code>WriteAndShow()</code>、<code>ShowRead()</code> 都是同一個檔案裡的 static 區域函式。每個情境都從 <code>Cluster.Create()</code> 重新開始，互不影響。沒有設定檔，也不讀環境變數。</p>
+    </div>
+    <div class="card major">
+      <h3>Cluster.Create()</h3>
+      <p><code>Cluster.cs</code> 有兩個多載：<code>Create(mode)</code> 用預設的 A、B、C；<code>Create(mode, params string[] nodes)</code> 自訂節點，2 台的情境傳 <code>"A", "B"</code>。每個節點一個空的 <code>ImmutableDictionary</code>，只有一個分組（全部連通），<code>Clock</code>、<code>PartitionedAt</code> 用 record 參數的預設值 <code>0</code>、<code>null</code>。</p>
+    </div>
+    <div class="card minor">
+      <h3>ClusterTests.cs</h3>
+      <p>xUnit 收集 11 個 <code>[Fact]</code> 和 1 個 <code>[Theory]</code>；<code>[Theory]</code> 透過 <code>[MemberData(nameof(InvalidPartitions))]</code> 跑 3 筆分組資料，共 14 個測試。共用情境由 <code>Partitioned()</code>、<code>WrittenOnBothSides()</code> 組出來，<code>AssertEveryNodeReads()</code> 檢查每一台讀到的值。</p>
+    </div>
+  </div>
+<pre>public static Cluster Create(Mode mode) =&gt; Create(mode, "A", "B", "C");
+
+public static Cluster Create(Mode mode, params string[] nodes) =&gt;
+    new(
+        mode,
+        [.. nodes],
+        nodes.ToImmutableDictionary(node =&gt; node, _ =&gt; ImmutableDictionary&lt;string, Version&gt;.Empty),
+        [nodes.ToImmutableHashSet()]);</pre>
+</section>
+
+<section id="design">
+  <h2>5. 關鍵設計</h2>
+
+  <h3>叢集不可變：每一步都是一張快照</h3>
+  <p><code>Cluster</code>、<code>Version</code>、<code>Result</code> 都是 <code>sealed record</code>，集合一律用 <code>ImmutableDictionary</code>、<code>ImmutableArray</code>、<code>ImmutableHashSet</code>。每個操作都用 <code>this with { ... }</code> 回傳新的叢集，所以示範程式每一步都要接回新叢集；寫入被拒絕時拿回的就是原本那個。測試也因此可以同時拿「寫入前」和「寫入後」的叢集比較。</p>
+<pre>public sealed record Cluster(
+    Mode Mode,
+    ImmutableArray&lt;string&gt; Nodes,
+    ImmutableDictionary&lt;string, ImmutableDictionary&lt;string, Version&gt;&gt; Stores,
+    ImmutableArray&lt;ImmutableHashSet&lt;string&gt;&gt; Groups,
+    int Clock = 0,
+    int? PartitionedAt = null)</pre>
+
+  <h3>「落後」和「遺失」靠 PartitionedAt 分開</h3>
+  <p>恢復時輸掉的版本有兩種：分區前就存在、只是沒收到新資料的（CP 的 C 上的 <code>x=1</code>），以及分區期間被確認過、卻被蓋掉的（AP 的 A 上的 <code>x=2</code>）。<code>Partition()</code> 用 <code>PartitionedAt = Clock</code> 記下當時的時鐘，<code>Heal()</code> 只把時間戳比它大的輸家算成遺失。</p>
+
+  <h3>過半的算法，決定了 2 台不夠</h3>
+  <p><code>Quorum</code> 是一個算出來的屬性：<code>Nodes.Length / 2 + 1</code>。3 台要 2 台，2 台也要 2 台。所以 3 台切成 2 和 1 時多數派還能服務，2 台切成 1 和 1 時兩邊都不行。這就是雙機備援要加 witness 的原因。</p>
+<pre>public int Quorum =&gt; Nodes.Length / 2 + 1;</pre>
+
+  <h3>其他</h3>
+  <table>
+    <thead><tr><th>設計</th><th>做法</th><th>在哪裡</th></tr></thead>
+    <tbody>
+      <tr><td>讀本地就等於讀到這一組的最新值</td><td>寫入會同步複製給同組每一台，所以同組節點的資料永遠一致，不用再問其他節點</td><td><code>Read()</code></td></tr>
+      <tr><td>CP 連讀取也拒絕</td><td>少數派手上的可能是舊資料，回舊資料就破壞一致性，所以讀寫都要過半</td><td><code>Read()</code> 也呼叫 <code>RejectWithoutQuorum()</code></td></tr>
+      <tr><td>輸入驗證</td><td>分組要剛好涵蓋每個節點一次、節點名稱要存在，否則丟 <code>ArgumentException</code></td><td><code>Partition()</code>、<code>Reachable()</code></td></tr>
+      <tr><td>沒有外部套件</td><td>範例專案沒有任何 NuGet 相依，只用 BCL 的 <code>System.Collections.Immutable</code>；xUnit、coverlet 只在測試專案。<code>Directory.Build.props</code> 開了 <code>TreatWarningsAsErrors</code>，警告一律當錯誤</td><td><code>CapTheorem.csproj</code>、<code>Directory.Build.props</code></td></tr>
+      <tr><td>三種語言結果一致</td><td>Python、Rust 版本照同一個模型實作，<code>demo</code> 的輸出用 <code>diff</code> 比對逐字相同</td><td>PoC 的 README「怎麼跑」</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="run">
+  <h2>6. 怎麼跑</h2>
+<pre><span class="c"># 在 dotnet/ 底下</span>
+./run.sh demo                      <span class="c"># dotnet run --project src/CapTheorem -c Release：印出三個情境</span>
+./run.sh test                      <span class="c"># dotnet test：14 個測試</span>
+
+<span class="c"># 只跑某一類測試</span>
+dotnet test --filter "FullyQualifiedName~Ap_Heal"
+dotnet test --filter "FullyQualifiedName~Cp_"      <span class="c"># CP 的 4 個測試</span>
+
+<span class="c"># 覆蓋率：結果在 tests/CapTheorem.Tests/TestResults/&lt;隨機資料夾&gt;/coverage.cobertura.xml</span>
+dotnet test --collect:"XPlat Code Coverage"
+
+<span class="c"># 自己玩：在 Program.cs 的 using 下面加幾行，再 ./run.sh demo</span>
+var c = Cluster.Create(Mode.AP).Write("A", "x", "1").Cluster.Partition(["A", "B"], ["C"]);
+c = c.Write("C", "x", "3").Cluster;
+Console.WriteLine($"{c.Read("A", "x")} / {c.Read("C", "x")}");
+
+<span class="c"># 確認三種語言輸出相同（在 PoC 根目錄）</span>
+diff &lt;(python/run.sh demo) &lt;(dotnet/run.sh demo) &amp;&amp; diff &lt;(python/run.sh demo) &lt;(rust/run.sh demo)</pre>
+
+  <p>這份實作沒有 port，也不讀環境變數。想換情境就改這些地方：</p>
+  <table>
+    <thead><tr><th>想做的事</th><th>改哪裡</th><th>例子</th></tr></thead>
+    <tbody>
+      <tr><td>換節點數量</td><td><code>Cluster.Create()</code> 的 <code>nodes</code></td><td><code>Cluster.Create(Mode.CP, "A", "B", "C", "D", "E")</code>：5 台要 3 台才過半</td></tr>
+      <tr><td>換斷線的方式</td><td><code>Partition()</code> 的分組</td><td><code>c.Partition(["A"], ["B"], ["C"])</code>：三台互相都連不到，CP 全停擺</td></tr>
+      <tr><td>換模式</td><td><code>Cluster.Create()</code> 的 <code>mode</code></td><td><code>Mode.CP</code> 或 <code>Mode.AP</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  實驗設計、成功標準和結論，請看 <a href="../README.md">PoC 的 README</a>。同樣的說明也有 <a href="../python/how-it-works.html">Python 版</a> 和 <a href="../rust/how-it-works.html">Rust 版</a>。
+</footer>
+
+</main>
+<script>
+  const ALL_SAME = (value) => ({ A: value, B: value, C: value });
+  const SCENARIOS = {
+    normal: {
+      on: ["c1-a", "a-b", "a-c"], fail: [], down: [], dim: ["client2"], gone: ["c2-b"], cut: null,
+      values: ALL_SAME("x = 1"), notes: { A: "接受寫入", B: "複製過來", C: "複製過來" },
+    },
+    "cp-split": {
+      on: ["c1-a", "a-b"], fail: ["a-c", "c2-c"], down: ["C"], dim: [], gone: ["c2-b"], cut: "v",
+      values: { A: "x = 2", B: "x = 2", C: "x = 1" }, notes: { A: "{A, B} 有 2 台，過半", B: "複製過來", C: "只有 1 台，讀寫都拒絕" },
+    },
+    "cp-heal": {
+      on: ["a-c"], fail: [], down: [], dim: ["client1", "client2"], gone: ["c2-b"], cut: null,
+      values: ALL_SAME("x = 2"), notes: { A: "", B: "", C: "追上進度：1 → 2，沒有遺失" },
+    },
+    "ap-split": {
+      on: ["c1-a", "a-b", "c2-c"], fail: ["a-c"], down: [], dim: [], gone: ["c2-b"], cut: "v",
+      values: { A: "x = 2", B: "x = 2", C: "x = 3" }, notes: { A: "照常接受", B: "複製過來", C: "照常接受，跟 A 不一致" },
+    },
+    "ap-heal": {
+      on: ["c-a", "c-b"], fail: [], down: [], dim: ["client1", "client2"], gone: ["c2-b"], cut: null,
+      values: ALL_SAME("x = 3"), notes: { A: "x = 2 被蓋掉（遺失）", B: "x = 2 被蓋掉", C: "時間戳 3 最新，勝出" },
+    },
+    two: {
+      on: [], fail: ["c1-a", "c2-b", "a-b"], down: ["A", "B"], dim: [], gone: ["C", "c2-c", "a-c", "c-a", "c-b"], cut: "h",
+      values: { A: "（沒有資料）", B: "（沒有資料）", C: "" }, notes: { A: "只有 1 台，需要 2 台", B: "只有 1 台，需要 2 台", C: "" },
+    },
+  };
+
+  function showScenario(id) {
+    const scenario = SCENARIOS[id];
+    document.querySelectorAll("#flow [data-edge]").forEach((edge) => {
+      const name = edge.dataset.edge;
+      edge.classList.toggle("on", scenario.on.includes(name));
+      edge.classList.toggle("fail", scenario.fail.includes(name));
+      edge.classList.toggle("gone", scenario.gone.includes(name));
+    });
+    document.querySelectorAll("#flow [data-node]").forEach((node) => {
+      const name = node.dataset.node;
+      node.classList.toggle("dim", scenario.dim.includes(name));
+      node.classList.toggle("down", scenario.down.includes(name));
+      node.classList.toggle("gone", scenario.gone.includes(name));
+    });
+    document.querySelectorAll("#flow [data-value]").forEach((text) => { text.textContent = scenario.values[text.dataset.value]; });
+    document.querySelectorAll("#flow [data-note]").forEach((text) => { text.textContent = scenario.notes[text.dataset.note]; });
+    document.querySelectorAll("#flow [data-cut]").forEach((cut) => { cut.classList.toggle("show", cut.dataset.cut === scenario.cut); });
+    document.querySelectorAll("[data-panel]").forEach((panel) => { panel.hidden = panel.dataset.panel !== id; });
+    document.querySelectorAll("[data-phase-btn]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.phaseBtn === id));
+    });
+  }
+
+  document.querySelectorAll("[data-phase-btn]").forEach((button) => {
+    button.addEventListener("click", () => showScenario(button.dataset.phaseBtn));
+  });
+  showScenario("normal");
+</script>
+</body>
+</html>

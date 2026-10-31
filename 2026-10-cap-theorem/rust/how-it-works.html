@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rust 版運作說明｜CAP 定理範例</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --fg: #1d232b; --muted: #5d6773; --line: #d8dde3; --card: #ffffff; --code-bg: #f0f2f5;
+    --flow: #2563eb; --flow-ink: #ffffff; --fail: #d64545; --idle: #b9c0c8;
+    --tool: #6d5bd0; --major: #0f8b8d; --minor: #b86e0b; --warn-bg: #fff4dc; --warn-fg: #8a5300;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a; --fg: #e4e7eb; --muted: #9aa4b0; --line: #2d333b; --card: #1a1f26; --code-bg: #20262e;
+      --flow: #6ea0ff; --flow-ink: #0b1220; --fail: #ff7272; --idle: #4a525c;
+      --tool: #a596ff; --major: #4cc7c9; --minor: #f0a948; --warn-bg: #3a2c12; --warn-fg: #f5c46b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); line-height: 1.7;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 1.9rem; line-height: 1.3; margin: 0 0 8px; }
+  h2 { font-size: 1.35rem; margin: 56px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 20px 0 8px; }
+  p { margin: 8px 0; }
+  a { color: var(--flow); }
+  .lead { color: var(--muted); font-size: 1.05rem; margin: 0; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 0; }
+  nav.toc a { text-decoration: none; font-size: .9rem; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--fg); background: var(--card); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .86em; }
+  :not(pre) > code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; line-height: 1.55; margin: 10px 0; }
+  pre .c { color: var(--muted); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 16px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; border-top: 4px solid var(--c, var(--line)); }
+  .card h3 { margin: 0 0 4px; }
+  .card .port { color: var(--muted); font-size: .85rem; }
+  .card p { font-size: .93rem; }
+  .tool { --c: var(--tool); } .major { --c: var(--major); } .minor { --c: var(--minor); }
+  .tree { background: var(--card); border: 1px solid var(--line); }
+  .tree .hl { background: var(--warn-bg); color: var(--warn-fg); border-radius: 3px; }
+  .note { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; padding: 10px 14px; font-size: .93rem; margin: 12px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: .92rem; background: var(--card); }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+  th { background: var(--code-bg); font-weight: 600; }
+
+  /* interactive flow */
+  .phase-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .phase-buttons button {
+    font: inherit; font-size: .92rem; cursor: pointer; padding: 6px 14px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--card); color: var(--fg);
+  }
+  .phase-buttons button:hover { border-color: var(--flow); }
+  .phase-buttons button:focus-visible { outline: 3px solid var(--flow); outline-offset: 2px; }
+  .phase-buttons button[aria-pressed="true"] { background: var(--flow); border-color: var(--flow); color: var(--flow-ink); font-weight: 600; }
+  .flow-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  #flow { width: 100%; height: auto; display: block; }
+  #flow text { fill: var(--fg); font-size: 13px; text-anchor: middle; }
+  #flow text.small { font-size: 11.5px; fill: var(--muted); }
+  #flow text.title { font-weight: 700; font-size: 14px; }
+  #flow text.value { font-size: 20px; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  #flow .node rect { fill: var(--card); stroke: var(--c); stroke-width: 2; rx: 8; }
+  #flow .node.major { --c: var(--major); } #flow .node.minor { --c: var(--minor); } #flow .node.plain { --c: var(--idle); }
+  #flow .node.dim { opacity: .35; }
+  #flow .gone { display: none; }
+  #flow .node.down rect { stroke: var(--fail); fill: var(--warn-bg); }
+  #flow .down-label { display: none; fill: var(--fail); font-weight: 700; }
+  #flow .node.down .down-label { display: inline; }
+  #flow path.edge { fill: none; stroke: var(--idle); stroke-width: 2; opacity: .45; marker-end: url(#arrow-idle); }
+  #flow path.edge.on { stroke: var(--flow); opacity: 1; stroke-width: 2.6; stroke-dasharray: 7 5; animation: dash 1s linear infinite; marker-end: url(#arrow-on); }
+  #flow path.edge.fail { stroke: var(--fail); opacity: 1; stroke-width: 2.6; stroke-dasharray: 3 5; marker-end: url(#arrow-fail); }
+  #flow .cut { display: none; }
+  #flow .cut.show { display: inline; }
+  #flow .cut line { stroke: var(--fail); stroke-width: 3; stroke-dasharray: 10 7; }
+  #flow .cut text { fill: var(--fail); font-weight: 700; font-size: 12px; text-anchor: start; }
+  @keyframes dash { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { #flow path.edge.on { animation: none; } }
+  .panel { margin-top: 12px; }
+  .panel dl { display: grid; grid-template-columns: 7.5em 1fr; gap: 6px 14px; margin: 8px 0; }
+  .panel dt { color: var(--muted); }
+  .panel dd { margin: 0; }
+
+  /* step timeline */
+  ol.steps { list-style: none; padding: 0; margin: 16px 0; counter-reset: step; }
+  ol.steps > li { position: relative; padding: 0 0 18px 46px; counter-increment: step; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--c, var(--flow)); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: .9rem;
+  }
+  ol.steps > li::after { content: ""; position: absolute; left: 14px; top: 32px; bottom: 2px; width: 2px; background: var(--line); }
+  ol.steps > li:last-child::after { display: none; }
+  ol.steps .where { font-size: .85rem; color: var(--muted); }
+  ol.steps .who { font-weight: 600; }
+  details { margin: 6px 0; }
+  details summary { cursor: pointer; color: var(--flow); font-size: .9rem; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  footer { margin-top: 64px; color: var(--muted); font-size: .88rem; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>CAP 定理範例｜Rust 版運作說明</h1>
+  <p class="lead">這頁說明 <code>rust/</code> 裡的程式怎麼運作：怎麼在單一程序裡模擬 3 台節點和網路分區，CP 和 AP 兩種模式在分區、恢復時各發生什麼事。Rust edition 2024（本機 rustc 1.98），只用標準函式庫（<code>std::collections::{BTreeMap, BTreeSet}</code>），沒有任何 crate 相依，測試用內建的 <code>cargo test</code>。</p>
+  <nav class="toc" aria-label="目錄">
+    <a href="#overview">1. 全貌</a>
+    <a href="#flow-section">2. 互動流程圖</a>
+    <a href="#journey">3. 一筆寫入的旅程</a>
+    <a href="#startup">4. 啟動時發生什麼</a>
+    <a href="#design">5. 關鍵設計</a>
+    <a href="#run">6. 怎麼跑</a>
+  </nav>
+</header>
+
+<section id="overview">
+  <h2>1. 全貌：一個模擬、一支示範程式、一組測試</h2>
+  <p>這份實作<strong>沒有真的網路，也不開任何 port</strong>。3 台節點 A、B、C 只是記憶體裡的資料，「網路分區」用「節點分組」表示：同一組內可以互相連線，跨組連不到。這樣每次跑的結果都一樣，不會被真實網路的抖動干擾。</p>
+  <div class="cards">
+    <div class="card major">
+      <h3>src/lib.rs</h3>
+      <div class="port">模擬本體 ・ crate <code>cap_theorem</code>，被 main.rs 和測試使用</div>
+      <p>叢集 <code>Cluster</code> 和五個操作：<code>Cluster::new()</code> 建立、<code>partition()</code> 切斷網路、<code>write()</code> 寫入、<code>read()</code> 讀取、<code>heal()</code> 恢復並合併。方法都只拿 <code>&amp;self</code>、回傳新的叢集，舊的不變。</p>
+    </div>
+    <div class="card tool">
+      <h3>src/main.rs</h3>
+      <div class="port">示範程式 ・ <code>./run.sh demo</code></div>
+      <p>依序跑三個情境：3 台 CP、3 台 AP、只有 2 台的 CP，把每一步的結果印出來。三種語言版本的輸出逐字相同。</p>
+    </div>
+    <div class="card minor">
+      <h3>tests/cap.rs</h3>
+      <div class="port">12 個整合測試 ・ <code>./run.sh test</code></div>
+      <p>README 的每一條成功標準都對應一個測試。「分組不合法」的三種情況（漏掉、重複、不存在）在同一個測試裡用迴圈跑，所以比 Python、.NET 的 14 個少，測的情境其實一樣。</p>
+    </div>
+  </div>
+
+  <h3>資料長什麼樣子</h3>
+  <table>
+    <thead><tr><th>型別</th><th>欄位或成員</th><th>說明</th></tr></thead>
+    <tbody>
+      <tr><td><code>Mode</code></td><td><code>Cp</code>、<code>Ap</code></td><td>整份程式只有一個地方看這個值：<code>require_quorum()</code>。實作了 <code>Display</code>，印成 <code>CP</code>、<code>AP</code></td></tr>
+      <tr><td><code>Version</code></td><td><code>value</code>、<code>timestamp</code>、<code>origin</code></td><td>一筆寫入。<code>timestamp</code> 是全域邏輯時鐘，恢復時用來決定誰贏；<code>origin</code> 是接受寫入的節點</td></tr>
+      <tr><td><code>CapError</code></td><td><code>NoQuorum { reachable, quorum }</code>、<code>UnknownNode(String)</code>、<code>InvalidPartition</code></td><td>所有失敗都用 <code>Result&lt;_, CapError&gt;</code> 回傳，不會 panic。<code>Display</code> 印出中文訊息，例如「只連得到 1 台，需要 2 台才過半」</td></tr>
+      <tr><td><code>Cluster</code></td><td>私有欄位 <code>mode</code>、<code>nodes</code>、<code>stores</code>、<code>groups</code>、<code>clock</code>、<code>partitioned_at</code></td><td>對外只有方法：<code>new()</code>、<code>nodes()</code>、<code>quorum()</code>、<code>partition()</code>、<code>write()</code>、<code>read()</code>、<code>heal()</code>。<code>stores</code> 是「節點 → <code>Store</code>」；<code>groups</code> 是目前連得到彼此的分組；<code>partitioned_at</code> 是分區發生時的時鐘</td></tr>
+      <tr><td><code>Store</code></td><td><code>BTreeMap&lt;String, Version&gt;</code></td><td>私有的型別別名：一台節點上的資料，key → 版本</td></tr>
+    </tbody>
+  </table>
+
+  <h3>資料夾結構</h3>
+<pre class="tree">rust/
+├── Cargo.toml          套件 cap-theorem，edition 2024，沒有任何 dependencies
+├── Cargo.lock
+├── run.sh              ./run.sh demo | test
+├── src/
+│   ├── lib.rs          模擬本體：Mode、Version、CapError、Cluster
+│   └── main.rs         示範程式：依序跑三個情境並印出結果
+├── tests/
+│   └── cap.rs          12 個整合測試（cargo test）
+<span class="hl">└── how-it-works.html   就是這一頁</span></pre>
+</section>
+
+<section id="flow-section">
+  <h2>2. 互動流程圖：分區前、分區中、恢復後</h2>
+  <p>點下面的按鈕切換情境。藍色虛線是寫入或複製實際走的路徑，紅色是被擋下的路徑，紅色長虛線是網路斷掉的位置。節點方框裡是那一台目前 <code>x</code> 的值。情境順序跟 <code>src/main.rs</code> 一樣。</p>
+  <div class="phase-buttons" role="group" aria-label="選擇情境">
+    <button type="button" data-phase-btn="normal" aria-pressed="true">正常：沒有分區</button>
+    <button type="button" data-phase-btn="cp-split" aria-pressed="false">CP：分區中</button>
+    <button type="button" data-phase-btn="cp-heal" aria-pressed="false">CP：恢復後</button>
+    <button type="button" data-phase-btn="ap-split" aria-pressed="false">AP：分區中</button>
+    <button type="button" data-phase-btn="ap-heal" aria-pressed="false">AP：恢復後</button>
+    <button type="button" data-phase-btn="two" aria-pressed="false">延伸：只有 2 台的 CP</button>
+  </div>
+
+  <div class="flow-wrap">
+    <svg id="flow" viewBox="0 0 960 400" role="img" aria-labelledby="flow-title flow-desc">
+      <title id="flow-title">寫入與複製流程圖</title>
+      <desc id="flow-desc">client1 連到節點 A，client2 連到節點 C。A 和 B 在網路分區的同一側，C 在另一側。寫入會複製到同一側的節點；恢復時用 last-write-wins 合併。只有 2 台的情境中，A 和 B 被切開，client2 改連 B。</desc>
+      <defs>
+        <marker id="arrow-idle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--idle)"/></marker>
+        <marker id="arrow-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--flow)"/></marker>
+        <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--fail)"/></marker>
+      </defs>
+
+      <g class="node plain" data-node="client1"><rect x="16" y="82" width="110" height="56"/><text x="71" y="115">client1</text></g>
+      <g class="node plain" data-node="client2"><rect x="834" y="20" width="110" height="56"/><text x="889" y="53">client2</text></g>
+
+      <g class="node major" data-node="A">
+        <rect x="180" y="40" width="230" height="130"/>
+        <text class="title" x="295" y="68">節點 A</text>
+        <text class="value" x="295" y="104" data-value="A">x = 1</text>
+        <text class="small" x="295" y="130" data-note="A"></text>
+        <text class="down-label" x="295" y="156">✕ 拒絕服務</text>
+      </g>
+      <g class="node major" data-node="B">
+        <rect x="180" y="240" width="230" height="130"/>
+        <text class="title" x="295" y="268">節點 B</text>
+        <text class="value" x="295" y="304" data-value="B">x = 1</text>
+        <text class="small" x="295" y="330" data-note="B"></text>
+        <text class="down-label" x="295" y="356">✕ 拒絕服務</text>
+      </g>
+      <g class="node minor" data-node="C">
+        <rect x="560" y="140" width="230" height="130"/>
+        <text class="title" x="675" y="168">節點 C</text>
+        <text class="value" x="675" y="204" data-value="C">x = 1</text>
+        <text class="small" x="675" y="230" data-note="C"></text>
+        <text class="down-label" x="675" y="256">✕ 拒絕服務</text>
+      </g>
+
+      <g class="cut" data-cut="v"><line x1="485" y1="14" x2="485" y2="388"/><text x="492" y="28">網路分區</text></g>
+      <g class="cut" data-cut="h"><line x1="150" y1="205" x2="440" y2="205"/><text x="446" y="209">網路分區</text></g>
+
+      <!-- edges are drawn after the boxes so the box fills never hide them -->
+      <path class="edge" data-edge="c1-a" d="M126 110 H178"/>
+      <path class="edge" data-edge="c2-c" d="M889 76 V205 H792"/>
+      <path class="edge" data-edge="c2-b" d="M924 76 V330 H412"/>
+      <path class="edge" data-edge="a-b" d="M295 170 V238"/>
+      <path class="edge" data-edge="a-c" d="M410 80 C 490 80, 500 165, 558 165"/>
+      <path class="edge" data-edge="c-a" d="M558 225 C 500 225, 470 140, 412 140"/>
+      <path class="edge" data-edge="c-b" d="M558 250 C 500 250, 470 300, 412 300"/>
+    </svg>
+
+    <div class="panel" data-panel="normal">
+      <h3>正常：沒有分區（CP、AP 都一樣）</h3>
+      <dl>
+        <dt>呼叫</dt><dd><code>cluster.write("A", "x", "1")</code></dd>
+        <dt>結果</dt><dd><code>Ok(新的 Cluster)</code>。A、B、C 都有 <code>x=1</code>（時間戳 1）。</dd>
+        <dt>為什麼</dt><dd>沒有分區時只有一個分組，3 台都連得到。<code>write()</code> 把新版本放進同組每一台的 <code>Store</code>。這時 CP 和 AP 的行為完全一樣，差別只在網路斷掉之後。</dd>
+        <dt>模擬的簡化</dt><dd>同組內的複製是瞬間完成的。真實系統複製要花時間，AP 系統通常是非同步複製。</dd>
+        <dt>對應測試</dt><dd><code>write_returns_new_cluster_without_changing_the_original</code></dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="cp-split" hidden>
+      <h3>CP：分區中，少數派那側停止服務</h3>
+      <dl>
+        <dt>呼叫</dt><dd><code>cluster.partition(&amp;[&amp;["A", "B"], &amp;["C"]])</code> → <code>cluster.write("A", "x", "2")</code> → <code>cluster.write("C", "x", "3")</code> → <code>cluster.read("C", "x")</code></dd>
+        <dt>結果</dt><dd>A 寫入回 <code>Ok</code>，複製到 B。C 的寫入和讀取都回 <code>Err(CapError::NoQuorum { reachable: 1, quorum: 2 })</code>，印出來是「只連得到 1 台，需要 2 台才過半」。</dd>
+        <dt>為什麼</dt><dd><code>require_quorum()</code> 比較「同組有幾台」和 <code>quorum()</code>（3 台要 2 台）。{A, B} 有 2 台，過半；{C} 只有 1 台，不過半。</dd>
+        <dt>代價</dt><dd>C 那側完全不能用。但沒有人讀到舊資料，兩邊的資料也沒有分歧。</dd>
+        <dt>對應測試</dt><dd><code>cp_minority_side_rejects_writes_and_reads_during_partition</code>、<code>cp_majority_side_keeps_serving_during_partition</code></dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="cp-heal" hidden>
+      <h3>CP：恢復後，C 追上進度，沒有遺失</h3>
+      <dl>
+        <dt>呼叫</dt><dd><code>cluster.heal()</code>，回傳 <code>(Cluster, Vec&lt;Version&gt;)</code></dd>
+        <dt>結果</dt><dd>三台都是 <code>x=2</code>，回傳的 <code>lost</code> 是空的 <code>Vec</code>。</dd>
+        <dt>為什麼</dt><dd>合併時 <code>x</code> 有兩個版本：A、B 上的 <code>x=2</code>（時間戳 2）和 C 上的 <code>x=1</code>（時間戳 1）。<code>x=2</code> 比較新，勝出。<code>x=1</code> 在分區前（<code>partitioned_at</code> = <code>Some(1)</code>）就存在，輸掉只算「落後」，不算遺失。</dd>
+        <dt>對應測試</dt><dd><code>cp_heal_loses_no_acknowledged_write</code></dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="ap-split" hidden>
+      <h3>AP：分區中，兩邊照常服務，但資料分歧</h3>
+      <dl>
+        <dt>呼叫</dt><dd>跟 CP 一樣：<code>cluster.write("A", "x", "2")</code> → <code>cluster.write("C", "x", "3")</code></dd>
+        <dt>結果</dt><dd>兩筆寫入都回 <code>Ok</code>。<code>cluster.read("A", "x")</code> 回 <code>Ok(Some("2"))</code>，<code>cluster.read("C", "x")</code> 回 <code>Ok(Some("3"))</code>。</dd>
+        <dt>為什麼</dt><dd>AP 模式下 <code>require_quorum()</code> 的 <code>Mode::Ap =&gt; Ok(())</code> 直接放行。寫入只會複製給同組的節點，所以兩組各有各的值。</dd>
+        <dt>代價</dt><dd>同一個 key 在兩邊的值不一樣。在 C 寫入之前讀 C，會讀到分區前的舊值 <code>Ok(Some("1"))</code>。</dd>
+        <dt>對應測試</dt><dd><code>ap_both_sides_accept_writes_during_partition</code>、<code>ap_reads_diverge_during_partition</code>、<code>ap_minority_side_reads_stale_value_during_partition</code></dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="ap-heal" hidden>
+      <h3>AP：恢復後，last-write-wins 默默丟掉一筆已確認的寫入</h3>
+      <dl>
+        <dt>呼叫</dt><dd><code>cluster.heal()</code></dd>
+        <dt>結果</dt><dd>三台都是 <code>x=3</code>。回傳的 <code>lost</code> 裡有 A 寫入的 <code>Version { value: "2", timestamp: 2, origin: "A" }</code>。</dd>
+        <dt>為什麼</dt><dd><code>x=2</code>（時間戳 2）和 <code>x=3</code>（時間戳 3）都是分區期間寫的，last-write-wins 選時間戳大的 <code>x=3</code>。<code>x=2</code> 的時間戳 2 大於 <code>partitioned_at</code>（1），所以算遺失。</dd>
+        <dt>代價</dt><dd>client1 早就收到「寫入成功」，之後 <code>x=2</code> 被蓋掉，沒有任何通知。</dd>
+        <dt>對應測試</dt><dd><code>ap_heal_with_last_write_wins_drops_an_acknowledged_write</code></dd>
+      </dl>
+    </div>
+    <div class="panel" data-panel="two" hidden>
+      <h3>延伸：只有 2 台的 CP，分區時整個服務停擺</h3>
+      <dl>
+        <dt>呼叫</dt><dd><code>Cluster::new(Mode::Cp, &amp;["A", "B"]).partition(&amp;[&amp;["A"], &amp;["B"]])?</code> → A、B 各寫一次</dd>
+        <dt>結果</dt><dd>兩邊都回 <code>Err(CapError::NoQuorum { reachable: 1, quorum: 2 })</code>：只連得到 1 台，需要 2 台才過半。</dd>
+        <dt>為什麼</dt><dd><code>quorum()</code> 是 <code>self.nodes.len() / 2 + 1</code>，2 台需要 2 台。網路一斷，哪一邊都湊不到。</dd>
+        <dt>意義</dt><dd>雙機備援如果選 CP，就要加一個第三方仲裁（witness）湊出第三票，見<a href="../../2026-10-dual-node-failover/README.md">雙機備援 PoC</a>。</dd>
+        <dt>對應測試</dt><dd><code>cp_with_two_nodes_cannot_serve_on_either_side_of_a_partition</code></dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section id="journey">
+  <h2>3. 一筆寫入的旅程</h2>
+  <p>以分區中「client1 在 A 寫 <code>x=2</code>」為例，也就是 <code>src/main.rs</code> 裡的 <code>write_and_show(cluster, "A", "2", "分區")</code>。從呼叫到印出結果，經過這些程式碼：</p>
+  <ol class="steps">
+    <li style="--c: var(--tool)">
+      <div class="who">示範程式發出寫入</div>
+      <div class="where"><code>src/main.rs</code> 的 <code>write_and_show()</code></div>
+      <p>呼叫 <code>cluster.write()</code>。<code>Ok</code> 時拿回<strong>新的</strong>叢集往下傳；<code>Err</code> 時印出原因，把原本那個 <code>cluster</code> 原樣傳回去。寫入失敗不會改到任何東西，所以沿用舊的就好。</p>
+<pre>fn write_and_show(cluster: Cluster, node: &amp;str, value: &amp;str, stage: &amp;str) -&gt; Cluster {
+    let label = format!("[{stage}] {node} 寫 x={value}");
+    match cluster.write(node, "x", value) {
+        Ok(next) =&gt; {
+            println!("  {label} → 成功");
+            next
+        }
+        Err(error) =&gt; {
+            println!("  {label} → 拒絕：{error}");
+            cluster
+        }
+    }
+}</pre>
+    </li>
+    <li style="--c: var(--major)">
+      <div class="who">找出 A 連得到哪些節點</div>
+      <div class="where"><code>src/lib.rs</code> 的 <code>Cluster::write()</code> → <code>reachable()</code></div>
+      <p>在 <code>self.groups</code> 裡找出 A 所在的分組，這裡是 <code>{"A", "B"}</code> 這個 <code>BTreeSet</code>。節點名稱不存在時回 <code>Err(CapError::UnknownNode)</code>，<code>write()</code> 用 <code>?</code> 直接往上傳。</p>
+<pre>    fn reachable(&amp;self, node: &amp;str) -&gt; Result&lt;&amp;BTreeSet&lt;String&gt;, CapError&gt; {
+        self.groups
+            .iter()
+            .find(|group| group.contains(node))
+            .ok_or_else(|| CapError::UnknownNode(node.to_owned()))
+    }</pre>
+    </li>
+    <li style="--c: var(--major)">
+      <div class="who">CP 檢查有沒有過半，AP 直接放行</div>
+      <div class="where"><code>src/lib.rs</code> 的 <code>require_quorum()</code>、<code>quorum()</code></div>
+      <p>CP 模式下，{A, B} 有 2 台，<code>quorum()</code> 是 2，過半，回 <code>Ok(())</code>。如果是 C 寫入，{C} 只有 1 台，這裡回 <code>Err(CapError::NoQuorum { .. })</code>，<code>write()</code> 用 <code>?</code> 提早結束，呼叫端手上的叢集完全沒被動過。<code>match</code> 把三種情況都列出來，沒有用 <code>_</code> 萬用分支。<strong>CP 和 AP 的差別只有這一個判斷。</strong></p>
+<pre>    fn require_quorum(&amp;self, peers: &amp;BTreeSet&lt;String&gt;) -&gt; Result&lt;(), CapError&gt; {
+        match self.mode {
+            Mode::Ap =&gt; Ok(()),
+            Mode::Cp if peers.len() &gt;= self.quorum() =&gt; Ok(()),
+            Mode::Cp =&gt; Err(CapError::NoQuorum {
+                reachable: peers.len(),
+                quorum: self.quorum(),
+            }),
+        }
+    }</pre>
+    </li>
+    <li style="--c: var(--major)">
+      <div class="who">產生新版本，複製給同組節點</div>
+      <div class="where"><code>src/lib.rs</code> 的 <code>Cluster::write()</code> 後半、<code>with_entry()</code></div>
+      <p>時鐘加 1，建立 <code>Version { value: "2", timestamp: 2, origin: "A" }</code>。同組的 A、B 各拿到 <code>with_entry()</code> 做出來的新 <code>Store</code>；C 在另一組，拿到原本的複本，所以 C 還是 <code>x=1</code>。最後用 <code>Self { stores, clock, ..self.clone() }</code> 組出新的 <code>Cluster</code>，<code>&amp;self</code> 指向的舊叢集不受影響。</p>
+<pre>        let clock = self.clock + 1;
+        let version = Version {
+            value: value.to_owned(),
+            timestamp: clock,
+            origin: node.to_owned(),
+        };
+        let stores = self
+            .stores
+            .iter()
+            .map(|(name, store)| {
+                let store = if peers.contains(name) {
+                    with_entry(store, key, &amp;version)
+                } else {
+                    store.clone()
+                };
+                (name.clone(), store)
+            })
+            .collect();
+        Ok(Self {
+            stores,
+            clock,
+            ..self.clone()
+        })
+
+<span class="c">/// 回傳多了這一筆的新 Store，原本的不變</span>
+fn with_entry(store: &amp;Store, key: &amp;str, version: &amp;Version) -&gt; Store {
+    let mut updated = store.clone();
+    updated.insert(key.to_owned(), version.clone());
+    updated
+}</pre>
+    </li>
+    <li style="--c: var(--tool)">
+      <div class="who">印出結果</div>
+      <div class="where"><code>src/main.rs</code> 的 <code>write_and_show()</code></div>
+      <p>印出 <code>  [分區] A 寫 x=2 → 成功</code>。被拒絕時印出 <code>拒絕：</code>加上 <code>CapError</code> 的 <code>Display</code> 訊息。</p>
+    </li>
+    <li style="--c: var(--minor)">
+      <div class="who">網路恢復時合併</div>
+      <div class="where"><code>src/lib.rs</code> 的 <code>Cluster::heal()</code>、<code>versions_by_time()</code></div>
+      <p>把每個 key 在各節點上的不同版本收集起來，依時間戳由舊到新排好，最後一個勝出，寫回每一台。其他輸家如果是分區期間寫入的（時間戳大於 <code>partitioned_at</code>），就放進回傳的 <code>Vec&lt;Version&gt;</code>。</p>
+      <details><summary>看 heal() 和 versions_by_time() 的程式碼</summary>
+<pre>    pub fn heal(&amp;self) -&gt; (Self, Vec&lt;Version&gt;) {
+        let keys: BTreeSet&lt;&amp;String&gt; = self.stores.values().flat_map(Store::keys).collect();
+        <span class="c">// 每個 key 在各節點上的不同版本，依時間由舊到新排好；最後一個就是 LWW 的贏家</span>
+        let candidates: Vec&lt;(&amp;String, Vec&lt;&amp;Version&gt;)&gt; = keys
+            .into_iter()
+            .map(|key| (key, versions_by_time(self.stores.values(), key)))
+            .collect();
+        let merged: Store = candidates
+            .iter()
+            .filter_map(|(key, versions)| {
+                versions
+                    .last()
+                    .map(|winner| ((*key).clone(), (*winner).clone()))
+            })
+            .collect();
+
+        <span class="c">// 分區前就存在的舊版本輸掉只是「落後」，分區期間寫入的版本輸掉才是「遺失」。</span>
+        let since = self.partitioned_at.unwrap_or(self.clock);
+        let lost = candidates
+            .iter()
+            .flat_map(|(_, versions)| &amp;versions[..versions.len().saturating_sub(1)])
+            .filter(|version| version.timestamp &gt; since)
+            .map(|version| (*version).clone())
+            .collect();
+
+        let healed = Self {
+            stores: self
+                .nodes
+                .iter()
+                .map(|node| (node.clone(), merged.clone()))
+                .collect(),
+            groups: vec![self.nodes.iter().cloned().collect()],
+            partitioned_at: None,
+            ..self.clone()
+        };
+        (healed, lost)
+    }
+
+fn versions_by_time&lt;'a&gt;(stores: impl Iterator&lt;Item = &amp;'a Store&gt;, key: &amp;str) -&gt; Vec&lt;&amp;'a Version&gt; {
+    let mut versions: Vec&lt;&amp;Version&gt; = stores.filter_map(|store| store.get(key)).collect();
+    versions.sort_by_key(|version| version.timestamp);
+    versions.dedup();
+    versions
+}</pre>
+      </details>
+    </li>
+  </ol>
+
+  <h3>每種結果在哪一步決定</h3>
+  <table>
+    <thead><tr><th>狀況</th><th>在哪裡決定</th><th>結果</th></tr></thead>
+    <tbody>
+      <tr><td>節點名稱不存在</td><td>第 2 步 <code>reachable()</code></td><td><code>Err(CapError::UnknownNode("Z"))</code></td></tr>
+      <tr><td>CP，連得到的節點沒過半</td><td>第 3 步 <code>require_quorum()</code></td><td><code>Err(CapError::NoQuorum { .. })</code>，叢集不變</td></tr>
+      <tr><td>AP，分區中</td><td>第 3 步 <code>Mode::Ap =&gt; Ok(())</code> 直接放行</td><td>成功，但另一組看不到這筆寫入</td></tr>
+      <tr><td>分組沒有剛好涵蓋每個節點一次（漏掉、重複、不存在）</td><td><code>partition()</code></td><td><code>Err(CapError::InvalidPartition)</code></td></tr>
+      <tr><td>分區期間的寫入在恢復時輸給較新的版本</td><td>第 6 步 <code>heal()</code></td><td>出現在回傳的 <code>Vec&lt;Version&gt;</code> 裡</td></tr>
+    </tbody>
+  </table>
+  <p class="note">模擬刻意簡化了兩件事：同組內的複製是瞬間完成的，以及時間戳來自一個全域邏輯時鐘。真實的 AP 系統常用各台機器自己的時間做 last-write-wins，時間不準時，「誰被丟掉」會更難預測。</p>
+</section>
+
+<section id="startup">
+  <h2>4. 啟動時發生什麼</h2>
+  <div class="cols">
+    <div class="card tool">
+      <h3>src/main.rs</h3>
+      <p><code>main()</code> 回傳 <code>Result&lt;(), CapError&gt;</code>，依序呼叫 <code>run_three_nodes(Mode::Cp)?</code>、<code>run_three_nodes(Mode::Ap)?</code>、<code>run_two_nodes()</code>。每個情境都從 <code>Cluster::new()</code> 重新開始，互不影響。沒有設定檔，也不讀環境變數。</p>
+    </div>
+    <div class="card major">
+      <h3>Cluster::new()</h3>
+      <p><code>src/lib.rs</code>：每個節點一個空的 <code>Store</code>，只有一個分組（全部連通），<code>clock: 0</code>、<code>partitioned_at: None</code>。3 台的情境傳 <code>&amp;["A", "B", "C"]</code>，2 台的情境傳 <code>&amp;["A", "B"]</code>。</p>
+    </div>
+    <div class="card minor">
+      <h3>tests/cap.rs</h3>
+      <p><code>cargo test</code> 把它編成獨立的測試執行檔，只能用 crate 公開的 API。12 個 <code>#[test]</code>；共用情境由 <code>partitioned()</code>、<code>written_on_both_sides()</code> 組出來，<code>values_on_every_node()</code> 收集每台讀到的值。</p>
+    </div>
+  </div>
+<pre>fn main() -&gt; Result&lt;(), CapError&gt; {
+    run_three_nodes(Mode::Cp)?;
+    run_three_nodes(Mode::Ap)?;
+    run_two_nodes()
+}
+
+<span class="c">// src/lib.rs</span>
+    pub fn new(mode: Mode, nodes: &amp;[&amp;str]) -&gt; Self {
+        let nodes: Vec&lt;String&gt; = nodes.iter().map(|node| (*node).to_owned()).collect();
+        Self {
+            mode,
+            stores: nodes
+                .iter()
+                .map(|node| (node.clone(), Store::new()))
+                .collect(),
+            groups: vec![nodes.iter().cloned().collect()],
+            nodes,
+            clock: 0,
+            partitioned_at: None,
+        }
+    }</pre>
+</section>
+
+<section id="design">
+  <h2>5. 關鍵設計</h2>
+
+  <h3>叢集不可變：每一步都是一張快照</h3>
+  <p><code>Cluster</code> 的欄位全是私有的，對外只有方法。改變狀態的方法（<code>partition()</code>、<code>write()</code>、<code>heal()</code>）都只拿 <code>&amp;self</code>，用 <code>Self { .., ..self.clone() }</code> 回傳新的 <code>Self</code>。寫入失敗時回的是 <code>Err</code>，呼叫端手上的叢集本來就沒被動過。測試也因此可以同時拿「寫入前」和「寫入後」的叢集比較。</p>
+<pre>#[derive(Debug, Clone)]
+pub struct Cluster {
+    mode: Mode,
+    nodes: Vec&lt;String&gt;,
+    stores: BTreeMap&lt;String, Store&gt;,
+    <span class="c">/// 目前連得到彼此的節點分組</span>
+    groups: Vec&lt;BTreeSet&lt;String&gt;&gt;,
+    clock: u64,
+    <span class="c">/// 分區發生時的時鐘；沒有分區時為 None</span>
+    partitioned_at: Option&lt;u64&gt;,
+}</pre>
+
+  <h3>錯誤是 enum，訊息自己實作 Display</h3>
+  <p>三種失敗都放在 <code>CapError</code> 裡，呼叫端可以用 <code>match</code> 分辨，也可以直接印出中文訊息。沒有用 thiserror，跟微服務 PoC 的 Rust 版一致，所以 <code>Cargo.toml</code> 沒有任何相依套件。</p>
+<pre>#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CapError {
+    <span class="c">/// 連得到的節點沒過半（只有 CP 模式會發生）</span>
+    NoQuorum {
+        reachable: usize,
+        quorum: usize,
+    },
+    UnknownNode(String),
+    <span class="c">/// 分組沒有剛好涵蓋每個節點一次</span>
+    InvalidPartition,
+}
+
+impl fmt::Display for CapError {
+    fn fmt(&amp;self, f: &amp;mut fmt::Formatter&lt;'_&gt;) -&gt; fmt::Result {
+        match self {
+            Self::NoQuorum { reachable, quorum } =&gt; {
+                write!(f, "只連得到 {reachable} 台，需要 {quorum} 台才過半")
+            }
+            Self::UnknownNode(node) =&gt; write!(f, "不存在的節點：{node}"),
+            Self::InvalidPartition =&gt; f.write_str("分組必須剛好涵蓋每個節點一次"),
+        }
+    }
+}</pre>
+
+  <h3>「落後」和「遺失」靠 partitioned_at 分開</h3>
+  <p>恢復時輸掉的版本有兩種：分區前就存在、只是沒收到新資料的（CP 的 C 上的 <code>x=1</code>），以及分區期間被確認過、卻被蓋掉的（AP 的 A 上的 <code>x=2</code>）。<code>partition()</code> 記下 <code>partitioned_at: Some(self.clock)</code>，<code>heal()</code> 只把時間戳比它大的輸家算成遺失；沒有分區過時用 <code>unwrap_or(self.clock)</code>，什麼都不算遺失。</p>
+
+  <h3>過半的算法，決定了 2 台不夠</h3>
+  <p><code>quorum()</code> 是 <code>self.nodes.len() / 2 + 1</code>：3 台要 2 台，2 台也要 2 台。所以 3 台切成 2 和 1 時多數派還能服務，2 台切成 1 和 1 時兩邊都不行。這就是雙機備援要加 witness 的原因。</p>
+<pre>    pub fn quorum(&amp;self) -&gt; usize {
+        self.nodes.len() / 2 + 1
+    }</pre>
+
+  <h3>其他</h3>
+  <table>
+    <thead><tr><th>設計</th><th>做法</th><th>在哪裡</th></tr></thead>
+    <tbody>
+      <tr><td>讀本地就等於讀到這一組的最新值</td><td>寫入會同步複製給同組每一台，所以同組節點的資料永遠一致，不用再問其他節點；回傳 <code>Option&lt;&amp;str&gt;</code>，借用叢集裡的字串，不用複製</td><td><code>Cluster::read()</code></td></tr>
+      <tr><td>CP 連讀取也拒絕</td><td>少數派手上的可能是舊資料，回舊資料就破壞一致性，所以讀寫都要過半</td><td><code>read()</code> 也呼叫 <code>require_quorum()</code></td></tr>
+      <tr><td>輸入驗證</td><td>分組要剛好涵蓋每個節點一次（兩邊排序後比對）、節點名稱要存在，否則回 <code>Err</code>，不會 panic</td><td><code>partition()</code>、<code>sorted()</code>、<code>reachable()</code></td></tr>
+      <tr><td>沒有外部套件</td><td><code>Cargo.toml</code> 沒有任何 <code>[dependencies]</code>，只用標準函式庫</td><td><code>Cargo.toml</code></td></tr>
+      <tr><td>三種語言結果一致</td><td>Python、.NET 版本照同一個模型實作，<code>demo</code> 的輸出用 <code>diff</code> 比對逐字相同</td><td>PoC 的 README「怎麼跑」</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="run">
+  <h2>6. 怎麼跑</h2>
+<pre><span class="c"># 在 rust/ 底下</span>
+./run.sh demo                      <span class="c"># cargo run --quiet：印出三個情境</span>
+./run.sh test                      <span class="c"># cargo test：12 個測試</span>
+
+<span class="c"># 只跑名稱含 ap_heal 的測試</span>
+cargo test ap_heal
+
+<span class="c"># 格式與靜態檢查</span>
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+
+<span class="c"># 覆蓋率：本機沒裝 cargo-llvm-cov，要先安裝</span>
+cargo install cargo-llvm-cov
+cargo llvm-cov
+
+<span class="c"># 確認三種語言輸出相同（在 PoC 根目錄）</span>
+diff &lt;(python/run.sh demo) &lt;(dotnet/run.sh demo) &amp;&amp; diff &lt;(python/run.sh demo) &lt;(rust/run.sh demo)</pre>
+
+  <p>這份實作沒有 port，也不讀環境變數。想換情境就改 <code>src/main.rs</code> 裡的這些地方：</p>
+  <table>
+    <thead><tr><th>想做的事</th><th>改哪裡</th><th>例子</th></tr></thead>
+    <tbody>
+      <tr><td>換節點數量</td><td><code>Cluster::new()</code> 的 <code>nodes</code></td><td><code>Cluster::new(Mode::Cp, &amp;["A", "B", "C", "D", "E"])</code>：5 台要 3 台才過半</td></tr>
+      <tr><td>換斷線的方式</td><td><code>partition()</code> 的分組</td><td><code>cluster.partition(&amp;[&amp;["A"], &amp;["B"], &amp;["C"]])?</code>：三台互相都連不到，CP 全停擺</td></tr>
+      <tr><td>換模式</td><td><code>Cluster::new()</code> 的 <code>mode</code></td><td><code>Mode::Cp</code> 或 <code>Mode::Ap</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  實驗設計、成功標準和結論，請看 <a href="../README.md">PoC 的 README</a>。同樣的說明也有 <a href="../python/how-it-works.html">Python 版</a> 和 <a href="../dotnet/how-it-works.html">.NET 版</a>。
+</footer>
+
+</main>
+<script>
+  const ALL_SAME = (value) => ({ A: value, B: value, C: value });
+  const SCENARIOS = {
+    normal: {
+      on: ["c1-a", "a-b", "a-c"], fail: [], down: [], dim: ["client2"], gone: ["c2-b"], cut: null,
+      values: ALL_SAME("x = 1"), notes: { A: "接受寫入", B: "複製過來", C: "複製過來" },
+    },
+    "cp-split": {
+      on: ["c1-a", "a-b"], fail: ["a-c", "c2-c"], down: ["C"], dim: [], gone: ["c2-b"], cut: "v",
+      values: { A: "x = 2", B: "x = 2", C: "x = 1" }, notes: { A: "{A, B} 有 2 台，過半", B: "複製過來", C: "只有 1 台，讀寫都拒絕" },
+    },
+    "cp-heal": {
+      on: ["a-c"], fail: [], down: [], dim: ["client1", "client2"], gone: ["c2-b"], cut: null,
+      values: ALL_SAME("x = 2"), notes: { A: "", B: "", C: "追上進度：1 → 2，沒有遺失" },
+    },
+    "ap-split": {
+      on: ["c1-a", "a-b", "c2-c"], fail: ["a-c"], down: [], dim: [], gone: ["c2-b"], cut: "v",
+      values: { A: "x = 2", B: "x = 2", C: "x = 3" }, notes: { A: "照常接受", B: "複製過來", C: "照常接受，跟 A 不一致" },
+    },
+    "ap-heal": {
+      on: ["c-a", "c-b"], fail: [], down: [], dim: ["client1", "client2"], gone: ["c2-b"], cut: null,
+      values: ALL_SAME("x = 3"), notes: { A: "x = 2 被蓋掉（遺失）", B: "x = 2 被蓋掉", C: "時間戳 3 最新，勝出" },
+    },
+    two: {
+      on: [], fail: ["c1-a", "c2-b", "a-b"], down: ["A", "B"], dim: [], gone: ["C", "c2-c", "a-c", "c-a", "c-b"], cut: "h",
+      values: { A: "（沒有資料）", B: "（沒有資料）", C: "" }, notes: { A: "只有 1 台，需要 2 台", B: "只有 1 台，需要 2 台", C: "" },
+    },
+  };
+
+  function showScenario(id) {
+    const scenario = SCENARIOS[id];
+    document.querySelectorAll("#flow [data-edge]").forEach((edge) => {
+      const name = edge.dataset.edge;
+      edge.classList.toggle("on", scenario.on.includes(name));
+      edge.classList.toggle("fail", scenario.fail.includes(name));
+      edge.classList.toggle("gone", scenario.gone.includes(name));
+    });
+    document.querySelectorAll("#flow [data-node]").forEach((node) => {
+      const name = node.dataset.node;
+      node.classList.toggle("dim", scenario.dim.includes(name));
+      node.classList.toggle("down", scenario.down.includes(name));
+      node.classList.toggle("gone", scenario.gone.includes(name));
+    });
+    document.querySelectorAll("#flow [data-value]").forEach((text) => { text.textContent = scenario.values[text.dataset.value]; });
+    document.querySelectorAll("#flow [data-note]").forEach((text) => { text.textContent = scenario.notes[text.dataset.note]; });
+    document.querySelectorAll("#flow [data-cut]").forEach((cut) => { cut.classList.toggle("show", cut.dataset.cut === scenario.cut); });
+    document.querySelectorAll("[data-panel]").forEach((panel) => { panel.hidden = panel.dataset.panel !== id; });
+    document.querySelectorAll("[data-phase-btn]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.phaseBtn === id));
+    });
+  }
+
+  document.querySelectorAll("[data-phase-btn]").forEach((button) => {
+    button.addEventListener("click", () => showScenario(button.dataset.phaseBtn));
+  });
+  showScenario("normal");
+</script>
+</body>
+</html>

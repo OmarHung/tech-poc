@@ -51,7 +51,17 @@
 | AP 的合併 | last-write-wins（LWW） | 最常見也最簡單，剛好看得出丟資料的代價 |
 | 測試 | Python：pytest + pytest-cov；.NET：xUnit + coverlet；Rust：`cargo test` | 依各語言的測試規範，跟其他 PoC 一致 |
 
-## 怎麼跑
+## 做法
+
+三種語言用同一個模型：3 台節點 A、B、C 都存在記憶體裡，「網路分區」用節點分組表示，同組可以互相連線、跨組連不到。CP 和 AP 的差別只有一個判斷：CP 模式下，連得到的節點沒過半就拒絕讀寫。網路恢復時，用 last-write-wins 合併各節點的資料。
+
+每個實作資料夾的運作說明頁（有可以切換情境的互動流程圖，並追到各檔案和函式）：
+
+- [Python 版](./python/how-it-works.html)
+- [.NET 版](./dotnet/how-it-works.html)
+- [Rust 版](./rust/how-it-works.html)
+
+### 怎麼跑
 
 需要：Python 3.12 以上加 uv、.NET 10 SDK、Rust 1.85 以上。
 
